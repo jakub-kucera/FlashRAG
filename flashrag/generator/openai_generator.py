@@ -126,3 +126,28 @@ class OpenaiGenerator:
             loop
         )
         return future.result()
+
+
+# class OllamaGenerator(OpenaiGenerator):
+#     """Class for api-based openai models"""
+#
+#     def __init__(self, config):
+#         self.model_name = config["generator_model"]
+#         self.batch_size = config["generator_batch_size"]
+#         self.generation_params = config["generation_params"]
+#
+#         self.ollama_setting = config["ollama_setting"]
+#         if self.ollama_setting["api_key"] is None:
+#             self.ollama_setting["api_key"] = os.getenv("OPENAI_API_KEY")
+#
+#         if "api_type" in self.openai_setting and self.openai_setting["api_type"] == "azure":
+#             del self.openai_setting["api_type"]
+#             self.client = AsyncAzureOpenAI(**self.openai_setting)
+#         else:
+#             self.client = AsyncOpenAI(**self.openai_setting)
+#         try:
+#             self.tokenizer = tiktoken.encoding_for_model(self.model_name)
+#         except Exception as e:
+#             print("Error: ", e)
+#             warnings.warn("This model is not supported by tiktoken. Use gpt-3.5-turbo instead.")
+#             self.tokenizer = tiktoken.encoding_for_model('gpt-3.5-turbo')

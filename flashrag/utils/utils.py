@@ -34,6 +34,10 @@ def get_dataset(config):
         else:
             split_dict[split] = Dataset(config, split_path)
 
+    print("Dataset loaded successfully!")
+    print(f"Dataset splits: {list(split_dict.keys())}")
+    print(f"exists flag: {exist_flag}")
+
     return split_dict
 
 

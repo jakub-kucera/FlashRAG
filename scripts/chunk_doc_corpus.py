@@ -54,7 +54,11 @@ if __name__ == "__main__":
     chunked_documents = []
     current_chunk_id = 0
     for doc in tqdm(documents):
-        title, text = doc['contents'].split('\n', 1)
+        try:
+            title, text = doc['contents'].split('\n', 1)
+        except ValueError:
+            print(f"Skipping document with missing title or text: {doc}")
+            continue
         chunks = chunker.chunk(text)
         for chunk in chunks:
             chunked_doc = {

@@ -183,7 +183,8 @@ class VLLMGenerator(BaseGenerator):
                 enable_lora = True,
                 max_lora_rank = 64,
                 max_logprobs = 32016,
-                max_model_len = self.max_model_len
+                max_model_len = self.max_model_len,
+                dtype = "float16"
             )
         else:
             self.model = LLM(
@@ -191,7 +192,8 @@ class VLLMGenerator(BaseGenerator):
                 tensor_parallel_size = self.tensor_parallel_size,
                 gpu_memory_utilization = self.gpu_memory_utilization,
                 max_logprobs = 32016,
-                max_model_len = self.max_model_len
+                max_model_len = self.max_model_len,
+                dtype = "float16"
             )
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_path, trust_remote_code=True)
     def update_additional_setting(self):
@@ -578,3 +580,5 @@ class FastChatGenerator(HFCausalLMGenerator):
         tokenizer.padding_side = "left"
 
         return model, tokenizer
+
+

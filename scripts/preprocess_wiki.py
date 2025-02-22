@@ -166,7 +166,7 @@ if __name__ == "__main__":
             "-m",
             "wikiextractor.WikiExtractor",
             "--json",
-            "--filter_disambig_pages",
+            # "--filter_disambig_pages",
             "--quiet",
             "-o",
             temp_dir,
