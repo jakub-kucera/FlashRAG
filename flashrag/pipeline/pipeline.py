@@ -41,6 +41,33 @@ class BasicPipeline:
         return dataset
 
 
+class ZeroShotPipeline(BasicPipeline):
+    def __init__(self, config, prompt_template=None, retriever=None, generator=None):
+        """
+        inference stage:
+            query -> generator
+        """
+
+        super().__init__(config, prompt_template)
+        if generator is None:
+            self.generator = get_generator(config)
+        else:
+            self.generator = generator
+
+        self.use_fid = config["use_fid"]
+
+    def run(self, dataset, do_eval=True, pred_process_fun=None):
+        # direct generation without RAG
+        input_prompts = [self.prompt_template.get_string(question=q) for q in dataset.question]
+        dataset.update_output("prompt", input_prompts)
+
+        pred_answer_list = self.generator.generate(input_prompts)
+        dataset.update_output("pred", pred_answer_list)
+
+        dataset = self.evaluate(dataset, do_eval=do_eval, pred_process_fun=pred_process_fun)
+        return dataset
+
+
 class SequentialPipeline(BasicPipeline):
     def __init__(self, config, prompt_template=None, retriever=None, generator=None):
         """

@@ -28,7 +28,7 @@ def zero_shot(args):
     all_split = get_dataset(config)
     test_data = all_split[args.split]
 
-    from flashrag.pipeline import SequentialPipeline
+    from flashrag.pipeline import ZeroShotPipeline
     from flashrag.prompt import PromptTemplate
 
     templete = PromptTemplate(
@@ -36,8 +36,8 @@ def zero_shot(args):
         system_prompt="Answer the question based on your own knowledge. Only give me the answer and do not output any other words.",
         user_prompt="Question: {question}",
     )
-    pipeline = SequentialPipeline(config, templete)
-    result = pipeline.naive_run(test_data)
+    pipeline = ZeroShotPipeline(config, templete)
+    result = pipeline.run(test_data)
 
 
 def aar(args):
