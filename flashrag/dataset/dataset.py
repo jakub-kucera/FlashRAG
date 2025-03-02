@@ -115,12 +115,19 @@ class Dataset:
             raise FileNotFoundError(f"Dataset file {dataset_path} not found.")
 
         data = []
-        if dataset_path.endswith(".jsonl") or dataset_path.endswith(".json"):
+        if dataset_path.endswith(".jsonl"):
             with open(dataset_path, "r", encoding="utf-8") as f:
                 for line in f:
                     item_dict = json.loads(line)
                     item = Item(item_dict)
                     data.append(item)
+        elif dataset_path.endswith(".json"):
+            with open(dataset_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data[0], dict):
+                    data = [Item(item_dict) for item_dict in data]
+                else:
+                    assert isinstance(data[0], Item)
         elif dataset_path.endswith('parquet'):
             hf_data = datasets.load_dataset('parquet', data_files=dataset_path, split="train")
             hf_data = hf_data.cast_column('image', datasets.Image())
