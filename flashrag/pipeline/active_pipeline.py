@@ -615,6 +615,12 @@ class SelfRAGPipeline(BasicPipeline):
         return dataset
 
     def run(self, dataset, do_eval=True, pred_process_fun=None, long_form=False):
+        # overriding super class run method to support long_form
+        dataset = self.answer(dataset, long_form=long_form)
+        dataset = self.evaluate(dataset, do_eval=do_eval, pred_process_fun=pred_process_fun)
+        return dataset
+
+    def answer(self, dataset, long_form=False):
         run_func = self.run_batch_pred_long_form if long_form else self.run_batch_pred
         
         # # to avoid oom, split the total dataset into small batches
@@ -625,7 +631,6 @@ class SelfRAGPipeline(BasicPipeline):
         # dataset = merge_batch_dataset(all_dataset_list)
 
         dataset = run_func(dataset)
-        dataset = self.evaluate(dataset, do_eval=do_eval, pred_process_fun=pred_process_fun)
         return dataset
 
     def run_batch_pred(self, dataset):
@@ -1031,10 +1036,12 @@ class IRCOTPipeline(BasicPipeline):
             item.update_output('retrieval_result', batch_retrieval_results[item_id])
             item.update_output('pred', ' '.join(batch_thoughts[item_id]))
 
-    def run(self, dataset, do_eval=True, pred_process_fun=ircot_pred_parse):
-
+    def answer(self, dataset):
         self.run_batch(dataset)
+        return dataset
 
+    def run(self, dataset, do_eval=True, pred_process_fun=ircot_pred_parse):
+        dataset = self.answer(dataset)
         dataset = self.evaluate(dataset, do_eval=do_eval, pred_process_fun=pred_process_fun)
         return dataset
 

@@ -1,10 +1,13 @@
+import abc
+
+from flashrag.dataset import Dataset
 from flashrag.evaluator import Evaluator
 from flashrag.dataset.utils import split_dataset, merge_dataset
 from flashrag.utils import get_retriever, get_generator, get_refiner, get_judger
 from flashrag.prompt import PromptTemplate
 
 
-class BasicPipeline:
+class BasicPipeline(metaclass=abc.ABCMeta):
     """Base object of all pipelines. A pipeline includes the overall process of RAG.
     If you want to implement a pipeline, you should inherit this class.
     """
@@ -13,18 +16,28 @@ class BasicPipeline:
         self.config = config
         self.device = config["device"]
         self.retriever = None
-        self.evaluator = Evaluator(config)
+        self.evaluator = None
         self.save_retrieval_cache = config["save_retrieval_cache"]
         if prompt_template is None:
             prompt_template = PromptTemplate(config)
         self.prompt_template = prompt_template
 
-    def run(self, dataset):
+    def run(self, dataset, do_eval=True, pred_process_fun=None) -> Dataset:
         """The overall inference process of a RAG framework."""
+        dataset = self.answer(dataset)
+        dataset = self.evaluate(dataset, do_eval=do_eval, pred_process_fun=pred_process_fun)
+        return dataset
+
+    @abc.abstractmethod
+    def answer(self, dataset) -> Dataset:
+        """The overall inference process of a RAG framework without final evaluation."""
         pass
 
-    def evaluate(self, dataset, do_eval=True, pred_process_fun=None):
+    def evaluate(self, dataset, do_eval=True, pred_process_fun=None) -> Dataset:
         """The evaluation process after finishing overall generation"""
+        # load evaluator if not loaded
+        if self.evaluator is None:
+            self.evaluator = Evaluator(self.config)
 
         if pred_process_fun is not None:
             dataset = pred_process_fun(dataset)
@@ -56,7 +69,7 @@ class ZeroShotPipeline(BasicPipeline):
 
         self.use_fid = config["use_fid"]
 
-    def run(self, dataset, do_eval=True, pred_process_fun=None):
+    def answer(self, dataset):
         # direct generation without RAG
         input_prompts = [self.prompt_template.get_string(question=q) for q in dataset.question]
         dataset.update_output("prompt", input_prompts)
@@ -96,7 +109,7 @@ class SequentialPipeline(BasicPipeline):
             self.refiner = None
 
     def naive_run(self, dataset, do_eval=True, pred_process_fun=None):
-        # direct generation without RAG
+        # direct generation without RAG - kept for compatibility, but ZeroShotPipeline should be used instead
         input_prompts = [self.prompt_template.get_string(question=q) for q in dataset.question]
         dataset.update_output("prompt", input_prompts)
 
@@ -106,7 +119,7 @@ class SequentialPipeline(BasicPipeline):
         dataset = self.evaluate(dataset, do_eval=do_eval, pred_process_fun=pred_process_fun)
         return dataset
 
-    def run(self, dataset, do_eval=True, pred_process_fun=None):
+    def answer(self, dataset):
         input_query = dataset.question
         retrieval_results = self.retriever.batch_search(input_query)
         dataset.update_output("retrieval_result", retrieval_results)
@@ -152,8 +165,6 @@ class SequentialPipeline(BasicPipeline):
         pred_answer_list = self.generator.generate(input_prompts)
         dataset.update_output("pred", pred_answer_list)
 
-        dataset = self.evaluate(dataset, do_eval=do_eval, pred_process_fun=pred_process_fun)
-
         return dataset
 
 
@@ -185,7 +196,7 @@ class ConditionalPipeline(BasicPipeline):
             user_prompt="Question: {question}",
         )
 
-    def run(self, dataset, do_eval=True, pred_process_fun=None):
+    def answer(self, dataset):
         # judge_result: list of bool element, representing whether to use retrieval
         judge_result = self.judger.judge(dataset)
         dataset.update_output("judge_result", judge_result)
@@ -200,8 +211,6 @@ class ConditionalPipeline(BasicPipeline):
 
         # merge datasets into original format
         dataset = merge_dataset(dataset_split, judge_result)
-
-        dataset = self.evaluate(dataset, do_eval=do_eval, pred_process_fun=pred_process_fun)
 
         return dataset
 
@@ -255,8 +264,9 @@ class AdaptivePipeline(BasicPipeline):
             config, prompt_template=multi_hop_prompt_template, retriever=retriever, generator=generator, max_iter=5
         )
 
-    def run(self, dataset, do_eval=True, pred_process_fun=None):
+    def answer(self, dataset):
         # judge_result: choice result representing which pipeline to use(e.g. A, B, C)
+        # TODO edit to not load judge and generator models to memory at the same time
         judge_result = self.judger.judge(dataset)
         dataset.update_output("judge_result", judge_result)
 
@@ -274,7 +284,5 @@ class AdaptivePipeline(BasicPipeline):
 
         # merge datasets into original format
         dataset = merge_dataset(dataset_split, judge_result)
-
-        dataset = self.evaluate(dataset, do_eval=do_eval, pred_process_fun=pred_process_fun)
 
         return dataset
