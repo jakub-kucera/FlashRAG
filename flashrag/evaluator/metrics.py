@@ -1,8 +1,13 @@
+import json
 import re
+from copy import deepcopy
+
 import numpy as np
 import warnings
 from collections import Counter
 from flashrag.evaluator.utils import normalize_answer
+from flashrag.prompt import PromptTemplate
+from flashrag.utils import get_generator
 
 
 class BaseMetric:
@@ -506,6 +511,7 @@ class BLEU(BaseMetric):
 
 class LLMJudge(BaseMetric):
     metric_name = "llm_judge"
+    # TODO wait, this does not check golden answers againts generated ones!!!
     JUDGE_PROMPT = """
     You will be given a user_question and system_answer couple.
     Your task is to provide a 'total rating' scoring how well the system_answer answers the user concerns expressed in the user_question.
@@ -543,6 +549,7 @@ class LLMJudge(BaseMetric):
 
         self.llm_pipeline = pipeline("text2text-generation", model=model_path, device=0)
 
+    # TODO check this, answer is `self`???
     def extract_judge_score(answer: str, split_str: str = "Total rating:") -> int:
         try:
             if split_str in answer:
@@ -562,6 +569,7 @@ class LLMJudge(BaseMetric):
         judge_input_prompt = [self.JUDGE_PROMPT.format(question=q, answer=a) for q, a in zip(question_list, pred_list)]
         judge_output = self.llm_pipeline(judge_input_prompt, max_new_tokens=100, batch_size=8)
         judge_output = [item["generated_text"] for item in judge_output]
+        # TODO store judge_output to dataset
 
         metric_score_list = [self.extract_judge_score(o) for o in judge_output]
         # rescale score
@@ -569,7 +577,71 @@ class LLMJudge(BaseMetric):
 
         score = sum(metric_score_list) / len(metric_score_list)
 
+
         return {"llm_judge_score": score}, metric_score_list
+
+
+class LLMJudgeMatcher(BaseMetric):
+    metric_name = "llm_judge_matcher"
+    # TODO investigate INSTRUCTIONS. Copy pasted from Metas CRAG
+    INSTRUCTIONS = """Assume you are a human expert in grading predictions given by a model. You are given a question and a model prediction. Judge if the prediction matches the ground truth answer by following these steps:
+    1: Take it as granted that the Ground Truth is always correct.
+    2: If the Prediction indicates it is not sure about the answer, "score" should be "0"; otherwise, go the next step.
+    3: If the Prediction exactly matches the Ground Truth, "score" is 1.
+    4: If the Prediction does not exactly match the Ground Truth, go through the following steps and likely give a score as 0.
+    5: If the Ground Truth is a number, "score" is 1 if and only if the Prediction gives a number that almost exactly matches the ground truth.
+    6: If the Prediction is self-contradictory, "score" must be 0.
+    7: If the prediction is not answering the question, "score" must be 0.
+    8: If the prediction is a concise and correct summary of the ground truth, "score" is 1.
+    9: If ground truth contains a set of items, prediction must contain exactly same items for the score to be 1.
+    10: Otherwise, "score" is 0.
+
+    ### Output a JSON blob with an "explanation" field explaining your answer as short as possible and an "score" field with value 1 or 0."""
+
+    # USER_MSG = f"Question: {question}\n Ground truth: {ground_truth}\n Prediction: {answer}\n"
+
+    def __init__(self, config):
+        super().__init__(config)
+        if "llm_judge_generator_override" in config["metric_setting"]:
+            llm_setting = config["metric_setting"]["llm_judge_generator_override"]
+        else:
+            assert False, "No available LLM settings for LLM Judge!"
+        self.overridden_config = deepcopy(config)
+        if llm_setting := config["metric_setting"].get("llm_judge_generator_override", None):
+            self.overridden_config.final_config.update(llm_setting)
+        self.generator = get_generator(self.overridden_config)
+        self.prompt_template = PromptTemplate(self.overridden_config, system_prompt=self.INSTRUCTIONS)
+
+    def extract_judge_score(self, answer: str) -> int:
+        print(f"json answer str: {answer}")
+        try:
+            answer_json = json.loads(answer)
+            return int(answer_json["score"])
+        except Exception as e:
+            print(e)
+            return 0
+
+    def create_prompt(self, question, ground_truth, answer):
+        system_message = self.INSTRUCTIONS
+        user_message = f"Question: {question}\n Ground truth: {ground_truth}\n Prediction: {answer}\n"
+        return self.prompt_template.get_string(question=user_message)
+
+
+    def calculate_metric(self, data):
+        question_list = data.question
+        ground_truth_list = data.golden_answers
+        pred_list = data.pred
+
+        judge_input_prompt = [self.create_prompt(question=q, ground_truth=g, answer=a) for q, g, a in zip(question_list, ground_truth_list, pred_list)]
+        judge_output_list = self.generator.generate(judge_input_prompt)
+
+        data.update_output("judge_output", judge_output_list)
+
+        metric_score_list = [self.extract_judge_score(i.judge_output) for i in data]
+
+        score = sum(metric_score_list) / len(metric_score_list)
+
+        return {"llm_judge_matcher_accuracy": score}, metric_score_list
 
 
 class CountToken(BaseMetric):
@@ -642,3 +714,24 @@ class GAOKAOMM_Accuracy(BaseMetric):
         metric_dict['avg_score'] = np.mean(acc_list)
         return metric_dict, acc_list 
                 
+class AvgRetrievalCalls(BaseMetric):
+    metric_name = "avg_retrieval_calls"
+    # TODO if generation count is separate, could this be either retrieval counts or retrieved DOCS counts
+
+    def __init__(self, config):
+        super().__init__(config)
+
+    def calculate_metric(self, data):
+        # retrieval_calls = [len(item['retrieval_result']) for item in data]
+        retrieval_calls = [item['retrieval_count'] for item in data]
+        avg_llm_calls = sum(retrieval_calls) / len(retrieval_calls)
+
+        return {"avg_llm_calls": avg_llm_calls}, retrieval_calls
+
+# TODO avg generation results
+
+
+# TODO hallucination
+
+
+Hallucination
