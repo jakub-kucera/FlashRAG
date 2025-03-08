@@ -732,6 +732,3 @@ class AvgRetrievalCalls(BaseMetric):
 
 
 # TODO hallucination
-
-
-Hallucination
