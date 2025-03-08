@@ -10,8 +10,8 @@ import argparse
 def naive(args):
     save_note = "naive"
     config_dict = {"save_note": save_note, "gpu_id": args.gpu_id, "dataset_name": args.dataset_name, "split": args.split}
-    {"save_note": "naive"}
-    from flashrag.pipeline import SequentialPipeline
+    # disables creating new directory for evaluation
+    config_dict["disable_save"] = args.evaluate_only
 
     # preparation
     config = Config(args.config_file, config_dict)
@@ -19,6 +19,7 @@ def naive(args):
     test_data = all_split[args.split]
     generated_dataset_path = args.generated_dataset_path
 
+    from flashrag.pipeline import SequentialPipeline
     pipeline = SequentialPipeline(config)
 
     if not args.evaluate_only:
@@ -36,6 +37,8 @@ def naive(args):
 def zero_shot(args):
     save_note = "zero-shot"
     config_dict = {"save_note": save_note, "gpu_id": args.gpu_id, "dataset_name": args.dataset_name, "split": args.split}
+    # disables creating new directory for evaluation
+    config_dict["disable_save"] = args.evaluate_only
 
     # preparation
     config = Config(args.config_file, config_dict)
@@ -89,6 +92,9 @@ def selfrag(args):
         "dataset_name": args.dataset_name,
         "split": args.split,
     }
+    # disables creating new directory for evaluation
+    config_dict["disable_save"] = args.evaluate_only
+
     config = Config(args.config_file, config_dict)
     all_split = get_dataset(config)
     test_data = all_split[args.split]
@@ -135,6 +141,9 @@ def adaptive(args):
         "dataset_name": args.dataset_name,
         "split": args.split,
     }
+    # disables creating new directory for evaluation
+    config_dict["disable_save"] = args.evaluate_only
+
     # preparation
     config = Config(args.config_file, config_dict)
     all_split = get_dataset(config)
