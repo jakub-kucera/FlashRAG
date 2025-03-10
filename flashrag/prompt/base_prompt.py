@@ -9,9 +9,11 @@ class PromptTemplate:
         "Only give me the answer and do not output any other words."
         "\nThe following are given documents.\n\n{reference}"
     )
+    base_amendment = "\n\nPick the answer from one of the following choices: {choices}"
+    # TODO list out A) ) B) C) D) or at least more whitespace in between
     base_user_prompt = "Question: {question}"
 
-    def __init__(self, config, system_prompt="", user_prompt="", reference_template=None, enable_chat=True):
+    def __init__(self, config, system_prompt="", user_prompt="", prompt_amendment="", reference_template=None, enable_chat=True):
 
         self.config = config
         self.is_openai = config["framework"] == "openai"
@@ -37,8 +39,11 @@ class PromptTemplate:
         if len(system_prompt) == 0 and len(user_prompt) == 0:
             system_prompt = self.base_system_prompt
             user_prompt = self.base_user_prompt
+        if len(prompt_amendment) == 0:
+            prompt_amendment = self.base_amendment
         self.system_prompt = system_prompt
         self.user_prompt = user_prompt
+        self.prompt_amendment = prompt_amendment
         self.enable_chat = enable_chat
         self.reference_template = reference_template
 
@@ -93,7 +98,7 @@ class PromptTemplate:
 
 
 
-    def get_string(self, question=None, retrieval_result=None, formatted_reference=None, previous_gen=None, messages=None, **params):
+    def get_string(self, question=None, retrieval_result=None, choices=None, formatted_reference=None, previous_gen=None, messages=None, **params):
         if messages is not None:
             if isinstance(messages, str):
                 return self.truncate_prompt(messages)
@@ -122,6 +127,8 @@ class PromptTemplate:
 
         system_prompt = self.system_prompt.format(**input_params)
         user_prompt = self.user_prompt.format(**input_params)
+        if choices:
+            user_prompt += self.amendment.format(choices=choices)
 
         if self.is_chat and self.enable_chat:
             input = []
