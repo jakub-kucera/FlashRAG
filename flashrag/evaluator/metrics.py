@@ -288,7 +288,7 @@ class Retrieval_Precision(BaseMetric):
 class Rouge_Score(BaseMetric):
     metric_name = "rouge_score"
     cached_scores = {}
-    
+
     def __init__(self, config):
         super().__init__(config)
         from rouge import Rouge
@@ -310,8 +310,6 @@ class Rouge_Score(BaseMetric):
 
         self.cached_scores[(pred, tuple(golden_answers))] = output
         return output
-
-
 
 
 class Rouge_1(Rouge_Score):
@@ -371,11 +369,10 @@ class Rouge_L(Rouge_Score):
         return {"rouge-l": score}, metric_score_list
 
 
-
 class ZH_Rouge_Score(BaseMetric):
     metric_name = "zh_rouge_score"
     cached_scores = {}
-    
+
     def __init__(self, config):
         super().__init__(config)
         from rouge_chinese import Rouge
@@ -402,14 +399,11 @@ class ZH_Rouge_Score(BaseMetric):
         return output
 
 
-
-
 class ZH_Rouge_1(ZH_Rouge_Score):
     metric_name = "zh_rouge-1"
 
     def __init__(self, config):
         super().__init__(config)
-        
 
     def calculate_metric(self, data):
         golden_answers_list = self.get_dataset_answer(data)
@@ -460,8 +454,6 @@ class ZH_Rouge_L(ZH_Rouge_Score):
         score = sum(metric_score_list) / len(metric_score_list)
 
         return {"zh_rouge-l": score}, metric_score_list
-
-
 
 
 class BLEU(BaseMetric):
@@ -577,7 +569,6 @@ class LLMJudge(BaseMetric):
 
         score = sum(metric_score_list) / len(metric_score_list)
 
-
         return {"llm_judge_score": score}, metric_score_list
 
 
@@ -598,7 +589,8 @@ class LLMJudgeMatcher(BaseMetric):
 
     ### Output a JSON blob with an "explanation" field explaining your answer as short as possible and an "score" field with value 1 or 0."""
 
-    # USER_MSG = f"Question: {question}\n Ground truth: {ground_truth}\n Prediction: {answer}\n"
+    USER_MSG = "Question: {question}\n Ground truth: {ground_truth}\n Prediction: {answer}\n"
+    # TODO add choices in the evaluation script as well? Should not matter, but probably will some difference
 
     def __init__(self, config):
         super().__init__(config)
@@ -610,7 +602,7 @@ class LLMJudgeMatcher(BaseMetric):
         if llm_setting := config["metric_setting"].get("llm_judge_generator_override", None):
             self.overridden_config.final_config.update(llm_setting)
         self.generator = get_generator(self.overridden_config)
-        self.prompt_template = PromptTemplate(self.overridden_config, system_prompt=self.INSTRUCTIONS)
+        self.prompt_template = PromptTemplate(self.overridden_config, system_prompt=self.INSTRUCTIONS, user_prompt=self.USER_MSG)
 
     def extract_judge_score(self, answer: str) -> int:
         print(f"json answer str: {answer}")
@@ -621,18 +613,12 @@ class LLMJudgeMatcher(BaseMetric):
             print(e)
             return 0
 
-    def create_prompt(self, question, ground_truth, answer):
-        system_message = self.INSTRUCTIONS
-        user_message = f"Question: {question}\n Ground truth: {ground_truth}\n Prediction: {answer}\n"
-        return self.prompt_template.get_string(question=user_message)
-
-
     def calculate_metric(self, data):
         question_list = data.question
-        ground_truth_list = data.golden_answers
+        # TODO move logic to dataset?
+        ground_truths_choice = [c[i[0]] for c, i in zip(data.choices, data.golden_answers)]
         pred_list = data.pred
-
-        judge_input_prompt = [self.create_prompt(question=q, ground_truth=g, answer=a) for q, g, a in zip(question_list, ground_truth_list, pred_list)]
+        judge_input_prompt = [self.prompt_template.get_string(question=q, ground_truth=g, answer=a) for q, g, a in zip(question_list, ground_truths_choice, pred_list)]
         judge_output_list = self.generator.generate(judge_input_prompt)
 
         data.update_output("judge_output", judge_output_list)
@@ -683,7 +669,7 @@ class GAOKAOMM_Accuracy(BaseMetric):
     metric_name = 'gaokao_acc'
     def __init__(self, config):
         super().__init__(config)
-    
+
     def calculate_metric(self, data):
         metric_dict = {}
         acc_list = []
@@ -710,10 +696,10 @@ class GAOKAOMM_Accuracy(BaseMetric):
             metric_dict[subject].append(acc)
         for key, value in metric_dict.items():
             metric_dict[key] = np.mean(value)
-        
+
         metric_dict['avg_score'] = np.mean(acc_list)
-        return metric_dict, acc_list 
-                
+        return metric_dict, acc_list
+
 class AvgRetrievalCalls(BaseMetric):
     metric_name = "avg_retrieval_calls"
     # TODO if generation count is separate, could this be either retrieval counts or retrieved DOCS counts
