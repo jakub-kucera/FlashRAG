@@ -4,13 +4,17 @@ import warnings
 
 class PromptTemplate:
     placeholders = ["reference", "question"]
+    # based on https://smith.langchain.com/hub/rlm/rag-prompt
     base_system_prompt = (
-        "Answer the question based on the given document."
-        "Only give me the answer and do not output any other words."
-        "\nThe following are given documents.\n\n{reference}"
+        """
+        You are an assistant for question-answering tasks.
+        Use the following pieces of retrieved context to answer the question. 
+        Use three sentences maximum and keep the answer concise.
+        The following are the given documents.\n\n{reference}
+        """
+        # If you don't know the answer, just say that you don't know.
     )
     base_amendment = "\n\nPick the answer from one of the following choices: {choices}"
-    # TODO list out A) ) B) C) D) or at least more whitespace in between
     base_user_prompt = "Question: {question}"
 
     def __init__(self, config, system_prompt="", user_prompt="", prompt_amendment="", reference_template=None, enable_chat=True):
