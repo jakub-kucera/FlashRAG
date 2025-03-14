@@ -1,7 +1,7 @@
 datasets
 base58
 nltk
-numpy
+numpy==1.26.4
 langid
 openai
 peft
@@ -20,3 +20,4 @@ chonkie>=0.4.0
 gradio>=5.0.0
 rouge-chinese
 jieba
+google-api-python-client>=2.164.0

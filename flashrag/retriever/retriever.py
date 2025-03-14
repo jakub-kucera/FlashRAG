@@ -868,3 +868,64 @@ class MultiRetrieverRouter:
                         image_idx += 1 
                 return final_result
 
+
+
+class GoogleSearchRetriever(BaseTextRetriever):
+    """
+    A retriever that uses Google's Custom Search JSON API to perform searches on the web.
+    """
+
+    def __init__(self, config):
+        super().__init__(config)
+
+    def update_additional_setting(self):
+        """
+        If you have any additional settings unique to GoogleSearchRetriever,
+        load or initialize them here.
+        """
+        # Retrieve the Google API key and Custom Search Engine (CSE) ID from config.
+        self.google_api_key = self._config["google_search_api_key"]
+        self.google_cse_id = self._config["google_search_cse_id"]
+
+    def _search(self, query: str, num: int = None, return_score: bool = False):
+        if num is None:
+            num = self.topk
+
+        from googleapiclient.discovery import build
+        service = build("customsearch", "v1", developerKey=self.google_api_key)
+        response = service.cse().list(
+            q=query,
+            cx=self.google_cse_id,
+            num=num
+        ).execute()
+
+        items = response.get("items", [])
+        results = []
+        scores = []
+        for item in items:
+            doc = {
+                "title": item.get("title", ""),
+                "snippet": item.get("snippet", ""),
+                "link": item.get("link", "")
+            }
+            results.append(doc)
+            # Hardcoding 1 as relevance, since Google Search doesn't provide scores.
+            scores.append(1.0)
+
+        if return_score:
+            return results, scores
+        return results
+
+    def _batch_search(self, queries, num: int = None, return_score: bool = False):
+        """
+        Perform multiple queries (batch search) and return a list of result lists.
+        """
+        if num is None:
+            num = self.topk
+
+        all_results = []
+        for q in queries:
+            res = self._search(q, num, return_score)
+            all_results.append(res)
+
+        return all_results

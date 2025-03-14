@@ -115,4 +115,7 @@ metric_setting:
 save_metric_score: True #　whether to save the metric score into txt file
 
 
+# -----------------------------------------Google search retriever Settings-----------------------------------------#
+google_search_api_key: ~
+google_search_cse_id: ~
 
