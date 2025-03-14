@@ -908,7 +908,7 @@ class GoogleSearchRetriever(BaseTextRetriever):
                 "snippet": item.get("snippet", ""),
                 "link": item.get("link", "")
             }
-            results.append(doc)
+            results.append(str(doc))
             # Hardcoding 1 as relevance, since Google Search doesn't provide scores.
             scores.append(1.0)
 
