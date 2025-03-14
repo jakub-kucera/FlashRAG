@@ -167,12 +167,41 @@ def adaptive(args):
         result.save(evaluated_dataset_path)
 
 
+def crag(args):
+    save_note = "crag"
+    config_dict = {"save_note": save_note, "gpu_id": args.gpu_id, "dataset_name": args.dataset_name, "split": args.split}
+    # disables creating new directory for evaluation
+    config_dict["disable_save"] = args.evaluate_only
+
+    # preparation
+    config = Config(args.config_file, config_dict)
+    all_split = get_dataset(config)
+    test_data = all_split[args.split]
+    generated_dataset_path = args.generated_dataset_path
+
+    from flashrag.pipeline import CorrectiveRAGPipeline
+    pipeline = CorrectiveRAGPipeline(config)
+
+    if not args.evaluate_only:
+        result = pipeline.answer(test_data)
+        generated_dataset_path = os.path.join(config["save_dir"], "generated.json")
+        result.save(generated_dataset_path)
+
+    if not args.generate_only:
+        dataset = Dataset(config, generated_dataset_path)
+        result = pipeline.evaluate(dataset)
+        evaluated_dataset_path = os.path.join(config["save_dir"], "evaluated.json")
+        result.save(evaluated_dataset_path)
+
+
+
 if __name__ == "__main__":
     func_dict = {
         "naive": naive,
         "zero-shot": zero_shot,
         "selfrag": selfrag,
         "adaptive": adaptive,
+        "crag": crag,
     }
 
     # TODO resolve config/dataset loading for evaluate only
