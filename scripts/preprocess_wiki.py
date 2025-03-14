@@ -188,14 +188,18 @@ if __name__ == "__main__":
 
 
     with open(args.save_path, "w", encoding="utf-8") as f:
-        for item in tqdm(documents):
+        for i, item in tqdm(enumerate(documents)):
             title, text = basic_process(item["title"], item["text"])
             if title is None:
                 continue
             title = f'"{title}"'
             chunks = chunker(text)
             for chunk in chunks:
-                clean_corpus = {"title": title, "text": chunk.text}
+                clean_corpus = {
+                    "id": i,
+                    "title": title,
+                    "contents": chunk.text
+                }
                 f.write(json.dumps(clean_corpus) + "\n")
 
     shutil.rmtree(temp_dir)
