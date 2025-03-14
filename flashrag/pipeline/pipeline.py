@@ -71,13 +71,13 @@ class ZeroShotPipeline(BasicPipeline):
 
     def answer(self, dataset):
         # direct generation without RAG
-        input_prompts = [self.prompt_template.get_string(question=q) for q in dataset.question]
+        input_prompts = [self.prompt_template.get_string(question=i.question, choices=i.choices) for i in dataset]
         dataset.update_output("prompt", input_prompts)
 
         pred_answer_list = self.generator.generate(input_prompts)
         dataset.update_output("pred", pred_answer_list)
 
-        dataset = self.evaluate(dataset, do_eval=do_eval, pred_process_fun=pred_process_fun)
+        dataset.update_output("retrieval_count", [0] * len(dataset))
         return dataset
 
 
@@ -110,11 +110,13 @@ class SequentialPipeline(BasicPipeline):
 
     def naive_run(self, dataset, do_eval=True, pred_process_fun=None):
         # direct generation without RAG - kept for compatibility, but ZeroShotPipeline should be used instead
-        input_prompts = [self.prompt_template.get_string(question=q) for q in dataset.question]
+        input_prompts = [self.prompt_template.get_string(question=i.question, choices=i.choices) for i in dataset]
         dataset.update_output("prompt", input_prompts)
 
         pred_answer_list = self.generator.generate(input_prompts)
         dataset.update_output("pred", pred_answer_list)
+
+        dataset.update_output("retrieval_count", [0] * len(dataset))
 
         dataset = self.evaluate(dataset, do_eval=do_eval, pred_process_fun=pred_process_fun)
         return dataset
@@ -123,15 +125,15 @@ class SequentialPipeline(BasicPipeline):
         input_query = dataset.question
         retrieval_results = self.retriever.batch_search(input_query)
         dataset.update_output("retrieval_result", retrieval_results)
+        dataset.update_output("retrieval_count", [1] * len(retrieval_results))
 
         if self.refiner:
             input_prompt_flag = self.refiner.input_prompt_flag
             if "llmlingua" in self.refiner.name and input_prompt_flag:
                 # input prompt
                 input_prompts = [
-                    self.prompt_template.get_string(question=q, retrieval_result=r)
-                    for q, r in zip(dataset.question, dataset.retrieval_result)
-                ]
+                    self.prompt_template.get_string(question=i.question, choices=i.choices, retrieval_result=i.retrieval_result)
+                    for i in dataset]
                 dataset.update_output("prompt", input_prompts)
                 input_prompts = self.refiner.batch_run(dataset)
             else:
@@ -139,15 +141,16 @@ class SequentialPipeline(BasicPipeline):
                 refine_results = self.refiner.batch_run(dataset)
                 dataset.update_output("refine_result", refine_results)
                 input_prompts = [
-                    self.prompt_template.get_string(question=q, formatted_reference=r)
-                    for q, r in zip(dataset.question, refine_results)
-                ]
+                    self.prompt_template.get_string(question=i.question, choices=i.choices,
+                                                    formatted_reference=i.refine_results)
+                        for i in dataset]
 
         else:
             if not self.use_fid:
                 input_prompts = [
-                    self.prompt_template.get_string(question=q, retrieval_result=r)
-                    for q, r in zip(dataset.question, dataset.retrieval_result)
+                    self.prompt_template.get_string(question=i.question, choices=i.choices,
+                                                    retrieval_result=i.retrieval_result)
+                    for i in dataset
                 ]
 
         if self.use_fid:
@@ -180,10 +183,12 @@ class ConditionalPipeline(BasicPipeline):
         self.judger = get_judger(config)
         if generator is None:
             self.generator = get_generator(config)
+        else:
+            self.generator = generator
         if retriever is None:
             self.retriever = get_retriever(config)
-        self.generator = generator
-        self.retriever = retriever
+        else:
+            self.retriever = retriever
 
         self.sequential_pipeline = SequentialPipeline(
             config, prompt_template, retriever=self.retriever, generator=self.generator
