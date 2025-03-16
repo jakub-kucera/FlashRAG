@@ -616,7 +616,25 @@ class LLMJudgeMatcher(BaseMetric):
     def calculate_metric(self, data):
         question_list = data.question
         # TODO move logic to dataset?
-        ground_truths_choice = [c[i[0]] for c, i in zip(data.choices, data.golden_answers)]
+        # ground_truths_choice = [c[i[0]] for c, i in zip(data.choices, data.golden_answers)]
+        ground_truths_choice = []
+        for c, ga in zip(data.choices, data.golden_answers):
+            if isinstance(ga, list):
+                    # print(f"Multiple ground truths, taking first one, {ga}")
+                if isinstance(ga[0], str):
+                    ground_truths_choice.append(ga[0])
+                elif isinstance(ga[0], int):
+                    if len(c) == 0:
+                        print("No choices available, but golden answer is index?")
+                    else:
+                        ground_truths_choice.append(c[ga[0]])
+            elif isinstance(ga, str):
+                print(f"golde answer is string, {ga}")
+            elif isinstance(ga, int):
+                print(f"golden answer is int, {ga}")
+            else:
+                print(f"golden answer is unknown type, {ga}")
+
         pred_list = data.pred
         judge_input_prompt = [self.prompt_template.get_string(question=q, ground_truth=g, answer=a) for q, g, a in zip(question_list, ground_truths_choice, pred_list)]
         judge_output_list = self.generator.generate(judge_input_prompt)
