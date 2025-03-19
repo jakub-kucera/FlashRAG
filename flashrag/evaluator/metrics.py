@@ -586,10 +586,11 @@ class LLMJudgeMatcher(BaseMetric):
     8: If the prediction is a concise and correct summary of the ground truth, "score" is 1.
     9: If ground truth contains a set of items, prediction must contain exactly same items for the score to be 1.
     10: Otherwise, "score" is 0.
+    
+    Output a valid JSON blob with a short "explanation" field explaining your answer as short as possible and an "score" field with value 1 or 0.
+    Do not wrap the JSON blob in any other text or ``` code block."""
 
-    ### Output a JSON blob with an "explanation" field explaining your answer as short as possible and an "score" field with value 1 or 0."""
-
-    USER_MSG = "Question: {question}\n Ground truth: {ground_truth}\n Prediction: {answer}\n"
+    USER_MSG = "Question: '{question}'\n Ground truth: '{ground_truth}'\n Prediction: '{answer}'\n"
     # TODO add choices in the evaluation script as well? Should not matter, but probably will some difference
 
     def __init__(self, config):
@@ -639,9 +640,11 @@ class LLMJudgeMatcher(BaseMetric):
         judge_input_prompt = [self.prompt_template.get_string(question=q, ground_truth=g, answer=a) for q, g, a in zip(question_list, ground_truths_choice, pred_list)]
         judge_output_list = self.generator.generate(judge_input_prompt)
 
-        data.update_output("judge_output", judge_output_list)
+        data.update_output("judge_output_raw", judge_output_list)
 
-        metric_score_list = [self.extract_judge_score(i.judge_output) for i in data]
+        metric_score_list = [self.extract_judge_score(i.judge_output_raw) for i in data]
+
+        data.update_output("judge_output_score", metric_score_list)
 
         score = sum(metric_score_list) / len(metric_score_list)
 
