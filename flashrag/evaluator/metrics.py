@@ -574,7 +574,7 @@ class LLMJudge(BaseMetric):
 
 class LLMJudgeMatcher(BaseMetric):
     metric_name = "llm_judge_matcher"
-    # TODO investigate INSTRUCTIONS. Copy pasted from Metas CRAG
+
     INSTRUCTIONS = """Assume you are a human expert in grading predictions given by a model. You are given a question and a model prediction. Judge if the prediction matches the ground truth answer by following these steps:
     1: Take it as granted that the Ground Truth is always correct.
     2: If the Prediction indicates it is not sure about the answer, "score" should be "0"; otherwise, go the next step.
@@ -588,10 +588,10 @@ class LLMJudgeMatcher(BaseMetric):
     10: Otherwise, "score" is 0.
     
     Output a valid JSON blob with a short "explanation" field explaining your answer as short as possible and an "score" field with value 1 or 0.
+    Do not forget about double quotes for keys and values in the JSON blob.
     Do not wrap the JSON blob in any other text or ``` code block."""
 
     USER_MSG = "Question: '{question}'\n Ground truth: '{ground_truth}'\n Prediction: '{answer}'\n"
-    # TODO add choices in the evaluation script as well? Should not matter, but probably will some difference
 
     def __init__(self, config):
         super().__init__(config)
@@ -605,50 +605,77 @@ class LLMJudgeMatcher(BaseMetric):
         self.generator = get_generator(self.overridden_config)
         self.prompt_template = PromptTemplate(self.overridden_config, system_prompt=self.INSTRUCTIONS, user_prompt=self.USER_MSG)
 
-    def extract_judge_score(self, answer: str) -> int:
-        print(f"json answer str: {answer}")
+    def extract_judge_score(self, answer: str) -> int | None:
         try:
             answer_json = json.loads(answer)
             return int(answer_json["score"])
         except Exception as e:
             print(e)
-            return 0
+            return None
 
-    def calculate_metric(self, data):
-        question_list = data.question
+    def extract_golden_answer(self, choices, golden_answers) -> str | None:
         # TODO move logic to dataset?
-        # ground_truths_choice = [c[i[0]] for c, i in zip(data.choices, data.golden_answers)]
-        ground_truths_choice = []
-        for c, ga in zip(data.choices, data.golden_answers):
-            if isinstance(ga, list):
-                    # print(f"Multiple ground truths, taking first one, {ga}")
-                if isinstance(ga[0], str):
-                    ground_truths_choice.append(ga[0])
-                elif isinstance(ga[0], int):
-                    if len(c) == 0:
+        try:
+            if isinstance(golden_answers, list):
+                # print(f"Multiple ground truths, taking first one, {golden_answers}")
+                if isinstance(golden_answers[0], str):
+                    # TODO handle multiple ground truths?
+                    return golden_answers[0]
+                elif isinstance(golden_answers[0], int):
+                    if len(choices) == 0:
                         print("No choices available, but golden answer is index?")
                     else:
-                        ground_truths_choice.append(c[ga[0]])
-            elif isinstance(ga, str):
-                print(f"golde answer is string, {ga}")
-            elif isinstance(ga, int):
-                print(f"golden answer is int, {ga}")
+                        return choices[golden_answers[0]]
+            elif isinstance(golden_answers, str):
+                print(f"golden answer is string, {golden_answers}")
+                return golden_answers
+            elif isinstance(golden_answers, int):
+                print(f"golden answer is int, {golden_answers}")
+                if len(choices) == 0:
+                    print("No choices available, but golden answer is index?")
+                else:
+                    return choices[golden_answers]
             else:
-                print(f"golden answer is unknown type, {ga}")
+                print(f"golden answer is unknown type, {golden_answers}")
+        except Exception as e:
+            print(e)
+            return None
+        return None
 
+    def calculate_metric(self, data):
         pred_list = data.pred
-        judge_input_prompt = [self.prompt_template.get_string(question=q, ground_truth=g, answer=a) for q, g, a in zip(question_list, ground_truths_choice, pred_list)]
-        judge_output_list = self.generator.generate(judge_input_prompt)
+        question_list = data.question
+        ground_truths_choice = [self.extract_golden_answer(c, ga) for c, ga in zip(data.choices, data.golden_answers)]
 
+        ground_truths_extract_success = [0 if g is None else 1 for g in ground_truths_choice]
+        data.update_output("ground_truths_extract_success", ground_truths_extract_success)
+
+        assert len(question_list) == len(ground_truths_choice) == len(pred_list), "Length of inputs do not match"
+
+        judge_input_prompts = [self.prompt_template.get_string(question=q, ground_truth=g, answer=a) for q, g, a in zip(question_list, ground_truths_choice, pred_list)]
+        data.update_output("judge_input_prompt", judge_input_prompts)
+
+        judge_output_list = self.generator.generate(judge_input_prompts)
         data.update_output("judge_output_raw", judge_output_list)
 
         metric_score_list = [self.extract_judge_score(i.judge_output_raw) for i in data]
 
-        data.update_output("judge_output_score", metric_score_list)
+        success_rate = [0 if score is None else 1 for score in metric_score_list]
+        data.update_output("judge_output_success_rate", success_rate)
 
-        score = sum(metric_score_list) / len(metric_score_list)
+        # convert null values to 0
+        metric_score_list_normalised = [0 if score is None else score for score in metric_score_list]
+        data.update_output("judge_output_score", metric_score_list_normalised)
 
-        return {"llm_judge_matcher_accuracy": score}, metric_score_list
+        # only count results, which valid extraction. Different size, cannot be saved
+        adjusted_metric_score_list = [score for score in metric_score_list if score is not None]
+
+        return {
+            "llm_judge_matcher_accuracy": sum(metric_score_list_normalised) / len(metric_score_list_normalised),
+            "llm_judge_matcher_adjusted_accuracy": sum(adjusted_metric_score_list) / len(adjusted_metric_score_list),
+            "llm_judge_matcher_success_rate": sum(success_rate) / len(success_rate),
+            "ground_truths_extract_success_rate": sum(ground_truths_extract_success) / len(ground_truths_extract_success),
+        }, metric_score_list
 
 
 class CountToken(BaseMetric):
