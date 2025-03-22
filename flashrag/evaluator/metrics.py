@@ -750,19 +750,29 @@ class GAOKAOMM_Accuracy(BaseMetric):
 
 class AvgRetrievalCalls(BaseMetric):
     metric_name = "avg_retrieval_calls"
-    # TODO if generation count is separate, could this be either retrieval counts or retrieved DOCS counts
 
     def __init__(self, config):
         super().__init__(config)
 
     def calculate_metric(self, data):
-        # retrieval_calls = [len(item['retrieval_result']) for item in data]
-        retrieval_calls = [item['retrieval_count'] for item in data]
-        avg_llm_calls = sum(retrieval_calls) / len(retrieval_calls)
+        avg_retrieval_calls = None
+        try:
+            retrieval_calls = data.retrieval_count
+            avg_retrieval_calls = sum(retrieval_calls) / len(retrieval_calls)
+        except Exception as e:
+            print(f"{self.metric_name}: {e}")
 
-        return {"avg_llm_calls": avg_llm_calls}, retrieval_calls
+        avg_retrieved_docs_count = None
+        try:
+            retrieved_docs = data.retrieval_result
+            retrieved_docs_count = [len(d) for d  in retrieved_docs]
+            avg_retrieved_docs_count = sum(retrieved_docs_count) / len(retrieved_docs_count)
+        except Exception as e:
+            print(f"{self.metric_name}: {e}")
 
-# TODO avg generation results
-
+        return {
+                "avg_retrieval_calls": avg_retrieval_calls,
+                "avg_retrieved_docs": avg_retrieved_docs_count,
+            }, []
 
 # TODO hallucination
