@@ -21,3 +21,5 @@ gradio>=5.0.0
 rouge-chinese
 jieba
 google-api-python-client>=2.164.0
+langchain
+langchain-community

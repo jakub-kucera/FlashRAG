@@ -194,6 +194,33 @@ def crag(args):
         result.save(evaluated_dataset_path)
 
 
+def react_agent(args):
+    save_note = "react-agent"
+    config_dict = {"save_note": save_note, "gpu_id": args.gpu_id, "dataset_name": args.dataset_name, "split": args.split}
+    # disables creating new directory for evaluation
+    config_dict["disable_save"] = args.evaluate_only
+
+    # preparation
+    config = Config(args.config_file, config_dict)
+    all_split = get_dataset(config)
+    test_data = all_split[args.split]
+    generated_dataset_path = args.generated_dataset_path
+
+    from flashrag.pipeline import ReActAgentPipeline
+    pipeline = ReActAgentPipeline(config)
+
+    if not args.evaluate_only:
+        result = pipeline.answer(test_data)
+        generated_dataset_path = os.path.join(config["save_dir"], "generated.json")
+        result.save(generated_dataset_path)
+
+    if not args.generate_only:
+        dataset = Dataset(config, generated_dataset_path)
+        result = pipeline.evaluate(dataset)
+        evaluated_dataset_path = os.path.join(config["save_dir"], "evaluated.json")
+        result.save(evaluated_dataset_path)
+
+
 
 if __name__ == "__main__":
     func_dict = {
@@ -202,6 +229,7 @@ if __name__ == "__main__":
         "selfrag": selfrag,
         "adaptive": adaptive,
         "crag": crag,
+        "react-agent": react_agent,
     }
 
     # TODO resolve config/dataset loading for evaluate only

@@ -422,3 +422,114 @@ class CorrectiveRAGPipeline(BasicPipeline):
             dataset.update_output("pred", pred_answer_list)
 
             return dataset
+
+
+class ReActAgentPipeline(BasicPipeline):
+    """
+    Example pipeline that leverages LangChain's ReAct agent approach
+    to handle question answering with a local LLaMA model.
+    """
+
+    def __init__(self,
+                 config,
+                 prompt_template: PromptTemplate = None,
+                 retriever=None):
+        """
+        :param config: Dictionary with pipeline configuration.
+                       Expect keys like "device", "model_path", etc.
+        :param prompt_template: Optional custom prompt template (from flashrag).
+        :param retriever: Optional custom retriever for retrieving documents.
+        """
+        super().__init__(config, prompt_template)
+
+        # if retriever is None:
+        #     self.retriever = get_retriever(config)
+        # else:
+        #     self.retriever = retriever
+
+        self.llm = ChatOllama(
+            model="llama3.2"
+        )
+
+        # from langchain_community.llms import VLLM
+        # self.llm = VLLM(
+        #     model=config["generator_model_path"],
+        #     trust_remote_code=True,  # mandatory for hf models
+        #     max_new_tokens=128,
+        #     top_k=10,
+        #     top_p=0.95,
+        #     temperature=0.8,
+        # )
+
+        self.retriever_calls = 0
+        self.retrieval_results = []
+
+        def retrieve_tool(query: str) -> str:
+            # For demonstration, we assume self.retriever.batch_search returns a list of docs.
+            # Convert them to string or a summarized text chunk for the agent’s output.
+            self.retriever_calls += 1
+            self.retrieval_results.extend(["a", "b"])
+            return ["empty document"]
+            if self.retriever is None:
+                return "No retriever provided. Cannot find any relevant documents."
+
+            docs = self.retriever.search(query)
+            self.retriever_calls += 1
+            self.retrieval_results.extend(docs)
+            return "\n\n".join(
+                [f"{doc['title']}: {doc['contents']}"
+                 for doc in docs])
+
+        retrieval_tool = Tool(
+            name="retrieval_search",
+            func=retrieve_tool,
+            description="Use this tool to search for relevant documents based on a query. "
+            "You can rephrase the query to be semantically similar to the documents you want to search for."
+        )
+        self.tools = [retrieval_tool]
+
+        self.agent = create_react_agent(
+            self.llm,
+            tools=self.tools,
+            prompt = f"""
+                You are an assistant for question-answering tasks.
+                Use three sentences maximum to answer the question in order to keep it concise.
+                If you don't know some information needed to respond to users question or you are not sure, use the `{retrieval_tool.name}` tool to search for it.
+                You can even use the search tool multiple times to search for different pieces of information.
+                If you know the answer to the questions, answer immediately 
+                """
+        )
+
+
+    def answer(self, dataset: Dataset) -> Dataset:
+        """
+        Implementation of answer() that uses the ReAct agent to produce answers.
+        """
+        for item in tqdm(dataset, desc="Agent processing questions: "):
+            self.retriever_calls = 0
+            self.retrieval_results = []
+
+            question = item.question
+
+            if choices := item.choices:
+                user_prompt = f"""Question: '{question}'
+                Pick the answer from one of the following choices: '{choices}'."""
+            else:
+                user_prompt =  f"question: `{question}`"
+
+            for c, s in enumerate(self.agent.stream(input={"messages": [("user", user_prompt)]}, stream_mode="values"), start=1):
+                message = s["messages"][-1]
+                if isinstance(message, tuple):
+                    print(message)
+                else:
+                    message.pretty_print()
+            final_answer = message.content
+
+            print(f"final_answer: {final_answer}")
+
+            item.output["pred"] = final_answer
+            item.output["retrieval_count"] = self.retriever_calls
+            item.output["retrieval_result"] = self.retrieval_results
+            item.output["agent_steps"] = c
+
+        return dataset
