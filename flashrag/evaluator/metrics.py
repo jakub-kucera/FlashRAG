@@ -575,40 +575,52 @@ class LLMJudge(BaseMetric):
 class LLMJudgeMatcher(BaseMetric):
     metric_name = "llm_judge_matcher"
 
-    INSTRUCTIONS = """Assume you are a human expert in grading predictions given by a model. You are given a question and a model prediction. Judge if the prediction matches the ground truth answer by following these steps:
-    1: Take it as granted that the Ground Truth is always correct.
-    2: If the Prediction indicates it is not sure about the answer, "score" should be "0"; otherwise, go the next step.
-    3: If the Prediction exactly matches the Ground Truth, "score" is 1.
-    4: If the Prediction does not exactly match the Ground Truth, go through the following steps and likely give a score as 0.
-    5: If the Ground Truth is a number, "score" is 1 if and only if the Prediction gives a number that almost exactly matches the ground truth.
-    6: If the Prediction is self-contradictory, "score" must be 0.
-    7: If the prediction is not answering the question, "score" must be 0.
-    8: If the prediction is a concise and correct summary of the ground truth, "score" is 1.
-    9: If ground truth contains a set of items, prediction must contain exactly same items for the score to be 1.
-    10: Otherwise, "score" is 0.
-    
-    Output a valid JSON blob with a short "explanation" field explaining your answer as short as possible and an "score" field with value 1 or 0.
-    Do not forget about double quotes for keys and values in the JSON blob.
-    Do not wrap the JSON blob in any other text or ``` code block."""
+    SYSTEM_PROMPT = """You are a helpful assistant."""
 
-    USER_MSG = "Question: '{question}'\n Ground truth: '{ground_truth}'\n Prediction: '{answer}'\n"
+    USER_PROMPT = """===Task===
+
+        I need your help in evaluating an answer provided by an LLM against a ground truth
+        answer. Your task is to determine if the ground truth answer is present in the LLM’s response.
+        Please analyze the provided data and make a decision.
+
+        ===Instructions===
+        1. Carefully compare the "Predicted Answer" with the "Ground Truth Answer".
+        2. Consider the substance of the answers – look for equivalent information or correct answers. Do
+        not focus on exact wording unless the exact wording is crucial to the meaning.
+        3. Your final decision should be based on whether the meaning and the vital facts of the "Ground
+        Truth Answer" are present in the "Predicted Answer:"
+
+        ===Input Data===
+        - Question: {question}
+        - Predicted Answer: {answer}
+        - Ground Truth Answer: {ground_truth}
+
+        ===Output Format===
+        Provide your final evaluation in a JSON blob in the following format:
+        {{ "Explanation": "Shortest possible explanation of how you made the decision.", "Decision": ("TRUE" or "FALSE") }}
+        Do not wrap the JSON blob in any other text or ``` code block.
+        Please proceed with the evaluation.
+        """
 
     def __init__(self, config):
         super().__init__(config)
-        if "llm_judge_generator_override" in config["metric_setting"]:
-            llm_setting = config["metric_setting"]["llm_judge_generator_override"]
-        else:
-            assert False, "No available LLM settings for LLM Judge!"
+        assert "llm_judge_generator_override" in config["metric_setting"], "No available LLM settings for LLM Judge!"
         self.overridden_config = deepcopy(config)
-        if llm_setting := config["metric_setting"].get("llm_judge_generator_override", None):
+        if llm_setting := config["metric_setting"].get("llm_judge_generator_override", {}):
             self.overridden_config.final_config.update(llm_setting)
         self.generator = get_generator(self.overridden_config)
-        self.prompt_template = PromptTemplate(self.overridden_config, system_prompt=self.INSTRUCTIONS, user_prompt=self.USER_MSG)
+        self.prompt_template = PromptTemplate(self.overridden_config, system_prompt=self.SYSTEM_PROMPT, user_prompt=self.USER_PROMPT)
 
     def extract_judge_score(self, answer: str) -> int | None:
         try:
             answer_json = json.loads(answer)
-            return int(answer_json["score"])
+            decision = answer_json["Decision"]
+            if decision.lower() == "true":
+                return 1
+            if decision.lower() == "false":
+                return 0
+            print(f"Invalid decision: {decision}")
+            return None
         except Exception as e:
             print(e)
             return None
