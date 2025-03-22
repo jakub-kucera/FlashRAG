@@ -173,7 +173,7 @@ class VLLMGenerator(BaseGenerator):
 
     def __init__(self, config):
         super().__init__(config)
-        
+
         from vllm import LLM
         if self.use_lora:
             self.model = LLM(
@@ -186,12 +186,19 @@ class VLLMGenerator(BaseGenerator):
                 max_model_len = self.max_model_len
             )
         else:
+            extra_kwargs = {}
+            if self.is_quantised:
+                extra_kwargs = dict(
+                    quantization="bitsandbytes",
+                    load_format="bitsandbytes"
+                )
             self.model = LLM(
                 self.model_path,
                 tensor_parallel_size = self.tensor_parallel_size,
                 gpu_memory_utilization = self.gpu_memory_utilization,
                 max_logprobs = 32016,
-                max_model_len = self.max_model_len
+                max_model_len = self.max_model_len,
+                **extra_kwargs
             )
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_path, trust_remote_code=True)
     def update_additional_setting(self):
@@ -204,6 +211,7 @@ class VLLMGenerator(BaseGenerator):
         else:
             self.tensor_parallel_size = self.gpu_num
 
+        self.is_quantised = False if "generator_is_quantised" not in self._config else self._config["generator_is_quantised"]
         self.lora_path = None if "generator_lora_path" not in self._config else self._config["generator_lora_path"]
         self.use_lora = False
         if self.lora_path is not None:
