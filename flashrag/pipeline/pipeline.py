@@ -345,6 +345,9 @@ class CorrectiveRAGPipeline(BasicPipeline):
             else:
                 self.refiner = None
 
+            from flashrag.retriever import TavilySearchRetriever
+            self.web_retriever = TavilySearchRetriever(config=self.config)
+
         def answer(self, dataset):
             input_query = dataset.question
             # retrieval_results = [[
@@ -358,7 +361,7 @@ class CorrectiveRAGPipeline(BasicPipeline):
 
             # rate retrieval
             questions = []
-            for item in dataset:
+            for item in tqdm(dataset, desc="Rating retrieval results: "):
                 for doc in item.retrieval_result:
                     questions.append(self.retrieval_rating_prompt.get_string(
                         context_str=doc, query_str=item.question))
@@ -398,12 +401,10 @@ class CorrectiveRAGPipeline(BasicPipeline):
             dataset.update_output("web_search_query", web_search_queries)
 
             # web search
-            from flashrag.retriever import GoogleSearchRetriever
-            web_retriever = GoogleSearchRetriever(config=self.config)
             web_search_results = []
-            for c, item in enumerate(dataset):
+            for c, item in tqdm(enumerate(dataset), desc="Web search: "):
                 if item.web_search_query:
-                    web_search_results.append(web_retriever.search(item.web_search_query))
+                    web_search_results.append(self.web_retriever.search(item.web_search_query))
                 else:
                     web_search_results.append(None)
             dataset.update_output("web_search_results", web_search_results)

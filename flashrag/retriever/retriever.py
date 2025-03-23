@@ -929,3 +929,59 @@ class GoogleSearchRetriever(BaseTextRetriever):
             all_results.append(res)
 
         return all_results
+
+
+class TavilySearchRetriever(BaseTextRetriever):
+    """
+    A retriever that uses Google's Custom Search JSON API to perform searches on the web.
+    """
+
+    def __init__(self, config):
+        super().__init__(config)
+        from tavily import TavilyClient
+        self.client = TavilyClient(api_key=self.tavily_search_api_key)
+
+    def update_additional_setting(self):
+        """
+        If you have any additional settings unique to GoogleSearchRetriever,
+        load or initialize them here.
+        """
+        # Retrieve the Google API key and Custom Search Engine (CSE) ID from config.
+        self.tavily_search_api_key = self._config["tavily_search_api_key"]
+
+    def _search(self, query: str, num: int = None, return_score: bool = False):
+        if num is None:
+            num = self.topk
+
+        response = self.client.search(query, max_results=num)
+
+        items = response.get("results", [])
+        results = []
+        scores = []
+        for item in items:
+            doc = {
+                "url": item.get("url", ""),
+                "title": item.get("title", ""),
+                "content": item.get("content", "")
+            }
+            results.append(str(doc))
+            # Hardcoding 1 as relevance, since Google Search doesn't provide scores.
+            scores.append(item.get("score", 1.0))
+
+        if return_score:
+            return results, scores
+        return results
+
+    def _batch_search(self, queries, num: int = None, return_score: bool = False):
+        """
+        Perform multiple queries (batch search) and return a list of result lists.
+        """
+        if num is None:
+            num = self.topk
+
+        all_results = []
+        for q in queries:
+            res = self._search(q, num, return_score)
+            all_results.append(res)
+
+        return all_results
