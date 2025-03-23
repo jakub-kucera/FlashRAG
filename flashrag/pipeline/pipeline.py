@@ -1,10 +1,15 @@
 import abc
 
+from langchain.agents import Tool
+from langchain_ollama import ChatOllama
+from langgraph.prebuilt import create_react_agent
+from tqdm import tqdm
+
 from flashrag.dataset import Dataset
-from flashrag.evaluator import Evaluator
 from flashrag.dataset.utils import split_dataset, merge_dataset
-from flashrag.utils import get_retriever, get_generator, get_refiner, get_judger
+from flashrag.evaluator import Evaluator
 from flashrag.prompt import PromptTemplate
+from flashrag.utils import get_retriever, get_generator, get_refiner, get_judger
 
 
 class BasicPipeline(metaclass=abc.ABCMeta):
@@ -443,34 +448,23 @@ class ReActAgentPipeline(BasicPipeline):
         """
         super().__init__(config, prompt_template)
 
-        # if retriever is None:
-        #     self.retriever = get_retriever(config)
-        # else:
-        #     self.retriever = retriever
+        if retriever is None:
+            self.retriever = get_retriever(config)
+        else:
+            self.retriever = retriever
 
         self.llm = ChatOllama(
-            model="llama3.2"
+            model="llama3.1:8b-instruct-fp16",
+            # model="llama3.2"
+            # TODO parametrize
+            temperature=0,
+            num_ctx=32768
         )
-
-        # from langchain_community.llms import VLLM
-        # self.llm = VLLM(
-        #     model=config["generator_model_path"],
-        #     trust_remote_code=True,  # mandatory for hf models
-        #     max_new_tokens=128,
-        #     top_k=10,
-        #     top_p=0.95,
-        #     temperature=0.8,
-        # )
 
         self.retriever_calls = 0
         self.retrieval_results = []
 
         def retrieve_tool(query: str) -> str:
-            # For demonstration, we assume self.retriever.batch_search returns a list of docs.
-            # Convert them to string or a summarized text chunk for the agent’s output.
-            self.retriever_calls += 1
-            self.retrieval_results.extend(["a", "b"])
-            return ["empty document"]
             if self.retriever is None:
                 return "No retriever provided. Cannot find any relevant documents."
 
@@ -497,7 +491,7 @@ class ReActAgentPipeline(BasicPipeline):
                 Use three sentences maximum to answer the question in order to keep it concise.
                 If you don't know some information needed to respond to users question or you are not sure, use the `{retrieval_tool.name}` tool to search for it.
                 You can even use the search tool multiple times to search for different pieces of information.
-                If you know the answer to the questions, answer immediately 
+                If you know the answer to the questions, answer immediately.
                 """
         )
 
@@ -520,13 +514,7 @@ class ReActAgentPipeline(BasicPipeline):
 
             for c, s in enumerate(self.agent.stream(input={"messages": [("user", user_prompt)]}, stream_mode="values"), start=1):
                 message = s["messages"][-1]
-                if isinstance(message, tuple):
-                    print(message)
-                else:
-                    message.pretty_print()
             final_answer = message.content
-
-            print(f"final_answer: {final_answer}")
 
             item.output["pred"] = final_answer
             item.output["retrieval_count"] = self.retriever_calls
