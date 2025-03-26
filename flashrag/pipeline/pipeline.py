@@ -41,7 +41,7 @@ class BasicPipeline(metaclass=abc.ABCMeta):
     def evaluate(self, dataset, do_eval=True, pred_process_fun=None) -> Dataset:
         """The evaluation process after finishing overall generation"""
         # load evaluator if not loaded
-        if self.evaluator is None:
+        if self.evaluator is None and do_eval:
             self.evaluator = Evaluator(self.config)
 
         if pred_process_fun is not None:
