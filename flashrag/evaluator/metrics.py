@@ -664,11 +664,21 @@ class LLMJudgeMatcher(BaseMetric):
         # only count results, which valid extraction. Different size, cannot be saved
         adjusted_metric_score_list = [score for score in metric_score_list if score is not None]
 
+        categories_scores_list = {}
+        if "questions_type" in data[0].metadata:
+            for item in data:
+                if item.metadata["questions_type"] not in categories_scores_list:
+                    categories_scores_list[item.metadata["questions_type"]] = []
+                categories_scores_list[item.metadata["questions_type"]].append(item.judge_output_score)
+
+        categories_scores = {f"llm_judge_matcher_accuracy_category_{key}": sum(v) / len(v) for key, v in categories_scores_list.items()}
+
         return {
             "llm_judge_matcher_accuracy": sum(metric_score_list_normalised) / len(metric_score_list_normalised),
             "llm_judge_matcher_adjusted_accuracy": sum(adjusted_metric_score_list) / len(adjusted_metric_score_list),
             "llm_judge_matcher_success_rate": sum(success_rate) / len(success_rate),
             "ground_truths_extract_success_rate": sum(ground_truths_extract_success) / len(ground_truths_extract_success),
+            **categories_scores
         }, metric_score_list
 
 
