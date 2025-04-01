@@ -417,7 +417,7 @@ class CorrectiveRAGPipeline(BasicPipeline):
             # merge retrieval and web search results
             input_prompts = []
             for c, item in enumerate(dataset):
-                docs = [doc for doc, rating in zip(item.retrieval_result, item.docs_relevance_ratings) if "yes" in rating.lower()]
+                docs = [f"{doc['title']}: {doc['contents']}" for doc, rating in zip(item.retrieval_result, item.docs_relevance_ratings) if "yes" in rating.lower()]
                 if item.web_search_results:
                     docs.extend(item.web_search_results)
                 input_prompts.append(self.prompt_template.get_string(question=item.question, formatted_reference="\n".join(docs)))
