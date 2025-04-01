@@ -304,9 +304,9 @@ class Index_Builder:
             all_embeddings = self._load_embedding(self.embedding_path, corpus_size, hidden_size)
         else:
             all_embeddings = self.encode_all_clip() if self.is_clip else self.encode_all()
+            del self.corpus
             if self.save_embedding:
                 self._save_embedding(all_embeddings)
-            del self.corpus
 
         # build index
         if self.is_clip:
