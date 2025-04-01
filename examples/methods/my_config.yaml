@@ -119,3 +119,7 @@ save_metric_score: True #　whether to save the metric score into txt file
 google_search_api_key: ~
 google_search_cse_id: ~
 
+
+# ---------------------------------------------------Weaviate Settings------------------------------------------------#
+weaviate_collection_name: "NSS_corpus_full"
+weaviate_language: "cs"

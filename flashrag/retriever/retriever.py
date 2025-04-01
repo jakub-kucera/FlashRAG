@@ -429,6 +429,109 @@ class DenseRetriever(BaseTextRetriever):
         else:
             return results
 
+class WeaviateRetriever(BaseTextRetriever):
+    r"""Retriever that uses a local Weaviate vector DB instance."""
+
+    def __init__(self, config: dict, corpus=None):
+        super().__init__(config)
+        # self.load_corpus(corpus)
+        self.load_model()
+        self.client = None
+        self.connect_to_weaviate()
+
+    def update_additional_setting(self):
+        self.query_max_length = self._config["retrieval_query_max_length"]
+        self.pooling_method = self._config['retrieval_pooling_method']
+        self.use_fp16 = self._config['retrieval_use_fp16']
+        self.batch_size = self._config["retrieval_batch_size"]
+        self.instruction = self._config["instruction"]
+        self.retrieval_model_path = self._config['retrieval_model_path']
+        self.use_st = self._config["use_sentence_transformer"]
+        self.weaviate_host = self._config.get("weaviate_url", "localhost")
+        self.weaviate_port = self._config.get("weaviate_port", 8080)
+        self.weaviate_collection_name = self._config["weaviate_collection_name"]
+        self.weaviate_language = self._config["weaviate_language"]
+
+    def load_model(self):
+        import stanza
+        stanza.download(self.weaviate_language)
+        self.lemma_model = stanza.Pipeline(lang=self.weaviate_language, processors='tokenize,lemma,pos')
+
+        if self.use_st:
+            self.encoder = STEncoder(
+                model_name=self.retrieval_method,
+                model_path=self.retrieval_model_path,
+                max_length=self.query_max_length,
+                use_fp16=self.use_fp16,
+                instruction=self.instruction,
+            )
+        else:
+            self.encoder = Encoder(
+                model_name=self.retrieval_method,
+                model_path=self.retrieval_model_path,
+                pooling_method=self.pooling_method,
+                max_length=self.query_max_length,
+                use_fp16=self.use_fp16,
+                instruction=self.instruction,
+            )
+
+    def lemmatize(self, text):
+        doc = self.lemma_model(text)
+        lemmatized_tokens = [word.lemma for sentence in doc.sentences for word in sentence.words]
+        return " ".join(lemmatized_tokens)
+
+    def connect_to_weaviate(self):
+        import weaviate
+        self.client = weaviate.connect_to_local(host=self.weaviate_host, port=self.weaviate_port)
+        self.weaviate_collection = self.client.collections.get(self.weaviate_collection_name)
+        self.weaviate_metadata_config = weaviate.classes.query.MetadataQuery(certainty=True, score=True)
+
+    def _search(self, query: str, num: int = None, return_score=False):
+        if num is None:
+            num = self.topk
+        query_emb = self.encoder.encode(query)[0]
+        # TODO lematise query for text search
+
+        lemmatized_query = self.lemmatize(query)
+
+        response = self.weaviate_collection.query.hybrid(
+            query=lemmatized_query,
+            vector=query_emb,
+            limit=num,
+            return_metadata=self.weaviate_metadata_config,
+            # query_properties=["name_lemmas^2", "contents_lemmas"],
+            # query_properties=["name_lemmas^0", "contents_lemmas"],
+            # alpha=1,
+        )
+
+        results = []
+        scores = []
+
+        for o in response.objects:
+            doc = {
+                'document name': o.properties['name'],
+                'chunk content': o.properties['contents'],
+            }
+            results.append(str(doc))
+            scores.append(o.metadata.score)
+        if return_score:
+            return results, scores
+        return results
+
+    def _batch_search(self, queries, num: int = None, return_score: bool = False):
+        """
+        Perform multiple queries (batch search) and return a list of result lists.
+        """
+        if num is None:
+            num = self.topk
+
+        all_results = []
+        for q in queries:
+            res = self._search(q, num, return_score)
+            all_results.append(res)
+
+        return all_results
+
 
 class MultiModalRetriever(BaseRetriever):
     r"""Multi-modal retriever based on pre-built faiss index."""
@@ -965,7 +1068,6 @@ class TavilySearchRetriever(BaseTextRetriever):
                 "content": item.get("content", "")
             }
             results.append(str(doc))
-            # Hardcoding 1 as relevance, since Google Search doesn't provide scores.
             scores.append(item.get("score", 1.0))
 
         if return_score:
