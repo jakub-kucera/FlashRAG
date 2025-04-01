@@ -20,6 +20,10 @@ chonkie>=0.4.0
 gradio>=5.0.0
 rouge-chinese
 jieba
-google-api-python-client>=2.164.0
+wikiextractor
+tavily-python
 langchain
 langchain-community
+langchain_huggingface
+weaviate-client
+stanza
