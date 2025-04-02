@@ -89,9 +89,13 @@ def get_retriever(config):
             arch = model_config.architectures[0]
             if "clip" in arch.lower():
                 return getattr(importlib.import_module("flashrag.retriever"), "MultiModalRetriever")(config)
+            elif config.get("retrieval_dense_use_weaviate", False):
+                return getattr(importlib.import_module("flashrag.retriever"), "WeaviateRetriever")(config)
             else:
                 return getattr(importlib.import_module("flashrag.retriever"), "DenseRetriever")(config)
         except:
+            if config.get("retrieval_dense_use_weaviate", False):
+                return getattr(importlib.import_module("flashrag.retriever"), "WeaviateRetriever")(config)
             return getattr(importlib.import_module("flashrag.retriever"), "DenseRetriever")(config)
 
 
