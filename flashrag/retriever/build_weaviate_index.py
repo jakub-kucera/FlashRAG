@@ -106,6 +106,8 @@ def create_weaviate_index(
         print(f"Inserting batch from {i} to {i+batch_size} ...")
         batch = weaviate_objs[i:i + batch_size]
         nss_corpus.data.insert_many(batch)
+    print("All objects inserted.")
+    client.close()
 
 def main():
     parser = argparse.ArgumentParser(description="Create a Weaviate index from a JSONL corpus and memmapped embeddings.")
