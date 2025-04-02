@@ -449,8 +449,8 @@ class WeaviateRetriever(BaseTextRetriever):
         self.use_st = self._config["use_sentence_transformer"]
         self.weaviate_host = self._config.get("weaviate_url", "localhost")
         self.weaviate_port = self._config.get("weaviate_port", 8080)
-        self.weaviate_collection_name = self._config["weaviate_collection_name"]
-        self.weaviate_language = self._config["weaviate_language"]
+        self.weaviate_collection_name = self._config.final_config["weaviate_collection_name"]
+        self.weaviate_language = self._config.final_config["weaviate_language"]
 
     def load_model(self):
         import stanza
