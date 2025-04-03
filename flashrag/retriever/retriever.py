@@ -518,7 +518,7 @@ class WeaviateRetriever(BaseTextRetriever):
             return results, scores
         return results
 
-    def _batch_search(self, queries, num: int = None, return_score: bool = False):
+    def _batch_search(self, query: List[str], num: int = None, return_score: bool = False):
         """
         Perform multiple queries (batch search) and return a list of result lists.
         """
@@ -526,7 +526,7 @@ class WeaviateRetriever(BaseTextRetriever):
             num = self.topk
 
         all_results = []
-        for q in queries:
+        for q in query:
             res = self._search(q, num, return_score)
             all_results.append(res)
 
