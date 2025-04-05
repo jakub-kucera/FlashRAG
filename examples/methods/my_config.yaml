@@ -124,3 +124,4 @@ google_search_cse_id: ~
 # ---------------------------------------------------Weaviate Settings------------------------------------------------#
 weaviate_collection_name: "NSS_corpus_full"
 weaviate_language: "cs"
+weaviate_alpha: 0.5

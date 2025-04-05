@@ -461,6 +461,7 @@ class WeaviateRetriever(BaseTextRetriever):
         self.weaviate_port = self._config.final_config.get("weaviate_port", 8080)
         self.weaviate_collection_name = self._config["weaviate_collection_name"]
         self.weaviate_language = self._config["weaviate_language"]
+        self.alpha = self._config["weaviate_alpha"]
 
     def load_model(self):
         import stanza
@@ -511,7 +512,7 @@ class WeaviateRetriever(BaseTextRetriever):
             return_metadata=self.weaviate_metadata_config,
             # query_properties=["name_lemmas^2", "contents_lemmas"],
             # query_properties=["name_lemmas^0", "contents_lemmas"],
-            # alpha=1,
+            alpha=self.alpha,
         )
 
         results = []
