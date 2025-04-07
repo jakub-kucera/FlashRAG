@@ -25,6 +25,11 @@ def create_weaviate_index(
     questions = client.collections.create(
         collection_name,
         vectorizer_config=wvc.config.Configure.Vectorizer.none(),
+        # vector_index_config=wvc.config.Configure.VectorIndex.hnsw(
+        vector_index_config=wvc.config.Configure.VectorIndex.flat(
+            # distance_metric=wvc.config.VectorDistances.L2_SQUARED,
+            distance_metric=wvc.config.VectorDistances.DOT,
+        ),
         properties=[
             wvc.config.Property(
                 name="orig_id",
