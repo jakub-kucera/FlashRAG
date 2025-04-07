@@ -304,8 +304,13 @@ class Index_Builder:
             all_embeddings = self._load_embedding(self.embedding_path, corpus_size, hidden_size)
         else:
             all_embeddings = self.encode_all_clip() if self.is_clip else self.encode_all()
-            del self.corpus
             if self.save_embedding:
+                # Save the embeddings
+                new_corpus_path = os.path.join(self.save_dir, f"{self.corpus_path.split('/')[-1].split('.')[0]}_with_embeddings.jsonl")
+                with open(new_corpus_path, "w") as f:
+                    for i, c in enumerate(self.corpus):
+                        c["embeddings"] = all_embeddings[i].tolist()
+                        f.write(json.dumps(c) + "\n")
                 self._save_embedding(all_embeddings)
 
         # build index
