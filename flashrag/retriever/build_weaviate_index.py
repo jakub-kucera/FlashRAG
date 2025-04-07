@@ -65,6 +65,36 @@ def create_weaviate_index(
                 index_filterable=True,
                 index_searchable=True,
             ),
+            wvc.config.Property(
+                name="verdict",
+                data_type=wvc.config.DataType.TEXT,
+                index_filterable=True,
+                index_searchable=True,
+            ),
+            wvc.config.Property(
+                name="right_to_compensation",
+                data_type=wvc.config.DataType.BOOL,
+                # index_filterable=True,
+                # index_searchable=True,
+            ),
+            wvc.config.Property(
+                name="possibility_of_appeal",
+                data_type=wvc.config.DataType.BOOL,
+                # index_filterable=True,
+                # index_searchable=True,
+            ),
+            wvc.config.Property(
+                name="referenced_paragraphs",
+                data_type=wvc.config.DataType.TEXT_ARRAY,
+                index_filterable=True,
+                index_searchable=True,
+            ),
+            wvc.config.Property(
+                name="referenced_entities",
+                data_type=wvc.config.DataType.TEXT_ARRAY,
+                index_filterable=True,
+                index_searchable=True,
+            ),
         ]
     )
 
@@ -86,10 +116,6 @@ def create_weaviate_index(
     num_embeddings = embeddings.shape[0] // embedding_dim
     embeddings = embeddings.reshape((num_embeddings, embedding_dim))
 
-    # Just to confirm that embeddings loaded correctly, print the first vector
-    # (optional for debugging)
-    print("First embedding preview:", embeddings[0][:5], "...")
-
     # Prepare objects
     weaviate_objs = []
     for i, item in enumerate(corpus):
@@ -102,6 +128,12 @@ def create_weaviate_index(
                     "name_lemmas": item["name_lemmatized"],
                     "contents": item["contents"],
                     "contents_lemmas": item["contents_lemmatized"],
+                    "verdict": item["verdict"],
+                    # TODO handle if str instead of bool. Convert to str always
+                    "right_to_compensation": item["right_to_compensation"] if isinstance(item["right_to_compensation"], bool) else None,
+                    "possibility_of_appeal": item["possibility_of_appeal"] if isinstance(item["possibility_of_appeal"], bool) else None,
+                    "referenced_paragraphs": item["referenced_paragraphs"],
+                    "referenced_entities": item["referenced_entities"],
                 },
                 vector=embeddings[i],
             )
