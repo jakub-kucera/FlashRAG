@@ -221,6 +221,53 @@ def react_agent(args):
         result.save(evaluated_dataset_path)
 
 
+def legal_naive(args):
+    save_note = "legal_naive"
+    config_dict = {"save_note": save_note, "gpu_id": args.gpu_id, "dataset_name": args.dataset_name, "split": args.split}
+    # disables creating new directory for evaluation
+    config_dict["disable_save"] = args.evaluate_only
+
+    # preparation
+    config = Config(args.config_file, config_dict)
+    all_split = get_dataset(config)
+    test_data = all_split[args.split]
+    generated_dataset_path = args.generated_dataset_path
+
+    from flashrag.prompt import PromptTemplate
+
+    templete = PromptTemplate(
+        config=config,
+        system_prompt=
+        """You are an LLM specialized in Czech administrative law, tasked with assisting users by answering questions based strictly on the legal texts and information provided to you in their prompt (including any retrieved excerpts from judicial decisions). Your goal is to:
+1. Interpret the user’s question accurately.
+2. Base your response solely on the relevant legal context the user supplies (e.g., excerpts from Czech court decisions, etc.).
+3. Provide clear, concise information without adding new or speculative details. If the user’s question cannot be answered from the given context, indicate that you do not have sufficient information.
+4. When asked legal questions, you may offer general informational insights, but emphasize you are not an attorney and cannot give definitive legal advice.
+5. If the user requests or implies any illegal or disallowed activity, refuse to comply.
+6. Maintain a neutral, professional, and factual tone.
+7. Use the following pieces of retrieved context to answer the question. 
+
+The following are the given documents:
+
+{reference}""",
+        user_prompt="Question: {question}",
+    )
+
+    from flashrag.pipeline import SequentialPipeline
+    pipeline = SequentialPipeline(config, templete)
+
+    if not args.evaluate_only:
+        result = pipeline.answer(test_data)
+        generated_dataset_path = os.path.join(config["save_dir"], "generated.json")
+        result.save(generated_dataset_path)
+
+    if not args.generate_only:
+        dataset = Dataset(config, generated_dataset_path)
+        result = pipeline.evaluate(dataset)
+        evaluated_dataset_path = os.path.join(config["save_dir"], "evaluated.json")
+        result.save(evaluated_dataset_path)
+
+
 
 if __name__ == "__main__":
     func_dict = {
@@ -230,6 +277,7 @@ if __name__ == "__main__":
         "adaptive": adaptive,
         "crag": crag,
         "react-agent": react_agent,
+        "legal-naive": legal_naive,
     }
 
     # TODO resolve config/dataset loading for evaluate only
