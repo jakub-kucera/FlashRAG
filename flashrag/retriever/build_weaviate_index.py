@@ -128,12 +128,12 @@ def create_weaviate_index(
                     "name_lemmas": item["name_lemmatized"],
                     "contents": item["contents"],
                     "contents_lemmas": item["contents_lemmatized"],
-                    "verdict": item["verdict"],
+                    "verdict": item.get("verdict"),
                     # TODO handle if str instead of bool. Convert to str always
-                    "right_to_compensation": item["right_to_compensation"] if isinstance(item["right_to_compensation"], bool) else None,
-                    "possibility_of_appeal": item["possibility_of_appeal"] if isinstance(item["possibility_of_appeal"], bool) else None,
-                    "referenced_paragraphs": item["referenced_paragraphs"],
-                    "referenced_entities": item["referenced_entities"],
+                    "right_to_compensation": item.get("right_to_compensation") if isinstance(item.get("right_to_compensation"), bool) else None,
+                    "possibility_of_appeal": item.get("possibility_of_appeal") if isinstance(item.get("possibility_of_appeal"), bool) else None,
+                    "referenced_paragraphs": item.get("referenced_paragraphs"),
+                    "referenced_entities": item.get("referenced_entities"),
                 },
                 vector=embeddings[i],
             )
