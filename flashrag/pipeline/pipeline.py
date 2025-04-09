@@ -176,6 +176,59 @@ class SequentialPipeline(BasicPipeline):
         return dataset
 
 
+    def answer_leave_one_out(self, dataset):
+        retrieval_results = []
+        for i in dataset:
+            retrieval_results.append(self.retriever.search_leave_1_out(query=i.question, files=i.metadata['file'], file=i.metadata['file']))
+        # self.retriever.batch_search(input_query)
+        dataset.update_output("retrieval_result", retrieval_results)
+        dataset.update_output("retrieval_count", [1] * len(retrieval_results))
+
+        if self.refiner:
+            input_prompt_flag = self.refiner.input_prompt_flag
+            if "llmlingua" in self.refiner.name and input_prompt_flag:
+                # input prompt
+                input_prompts = [
+                    self.prompt_template.get_string(question=i.question, choices=i.choices, retrieval_result=i.retrieval_result)
+                    for i in dataset]
+                dataset.update_output("prompt", input_prompts)
+                input_prompts = self.refiner.batch_run(dataset)
+            else:
+                # input retrieval docs
+                refine_results = self.refiner.batch_run(dataset)
+                dataset.update_output("refine_result", refine_results)
+                input_prompts = [
+                    self.prompt_template.get_string(question=i.question, choices=i.choices,
+                                                    formatted_reference=i.refine_results)
+                        for i in dataset]
+
+        else:
+            if not self.use_fid:
+                input_prompts = [
+                    self.prompt_template.get_string(question=i.question, choices=i.choices,
+                                                    retrieval_result=i.retrieval_result)
+                    for i in dataset
+                ]
+
+        if self.use_fid:
+            print("Use FiD generation")
+            input_prompts = []
+            for item in dataset:
+                q = item.question
+                docs = item.retrieval_result
+                input_prompts.append([q + " " + doc['contents'] for doc in docs])
+        dataset.update_output("prompt", input_prompts)
+
+        # delete used refiner to release memory
+        if self.refiner:
+            del self.refiner
+        pred_answer_list = self.generator.generate(input_prompts)
+        dataset.update_output("pred", pred_answer_list)
+
+        return dataset
+
+
+
 class ConditionalPipeline(BasicPipeline):
     def __init__(self, config, prompt_template=None, retriever=None, generator=None):
         """

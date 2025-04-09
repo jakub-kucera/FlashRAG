@@ -257,7 +257,7 @@ The following are the given documents:
     pipeline = SequentialPipeline(config, templete)
 
     if not args.evaluate_only:
-        result = pipeline.answer(test_data)
+        result = pipeline.answer_leave_one_out(test_data)
         generated_dataset_path = os.path.join(config["save_dir"], "generated.json")
         result.save(generated_dataset_path)
 

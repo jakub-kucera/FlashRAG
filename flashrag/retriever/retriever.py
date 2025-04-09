@@ -2,6 +2,8 @@ import json
 import os
 import time
 
+from weaviate.collections import Collection
+
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 import warnings
 from typing import List, Dict, Union
@@ -486,7 +488,7 @@ class WeaviateRetriever(BaseTextRetriever):
                 instruction=self.instruction,
             )
 
-    def lemmatize(self, text):
+    def lemmatize(self, text: str) -> str:
         doc = self.lemma_model(text)
         lemmatized_tokens = [word.lemma for sentence in doc.sentences for word in sentence.words]
         return " ".join(lemmatized_tokens)
@@ -494,8 +496,72 @@ class WeaviateRetriever(BaseTextRetriever):
     def connect_to_weaviate(self):
         import weaviate
         self.client = weaviate.connect_to_local(host=self.weaviate_host, port=self.weaviate_port)
-        self.weaviate_collection = self.client.collections.get(self.weaviate_collection_name)
+        self.weaviate_collection = self.client.collections.get(self.weaviate_collection_name).with_tenant("default")
+        self.weaviate_dumpster = self.client.collections.get(self.weaviate_collection_name).with_tenant("tmp")
         self.weaviate_metadata_config = weaviate.classes.query.MetadataQuery(certainty=True, score=True)
+
+    def _move_records(self, src_collection: Collection, trg_collection: Collection, file: str, delete_from_src: bool = True):
+        from weaviate.classes.query import Filter
+
+        with trg_collection.batch.fixed_size(batch_size=100) as batch:
+            for q in tqdm(src_collection.query.fetch_objects(
+                    filters=Filter.by_property("file").contains_any([file]),
+                    include_vector=True,
+                    limit=10000
+            ).objects):
+                batch.add_object(
+                    properties=q.properties,
+                    vector=q.vector["default"],
+                    uuid=q.uuid
+                )
+
+        if delete_from_src:
+            src_collection.data.delete_many(
+                where=Filter.by_property("file").contains_any([file])
+            )
+
+    def search_leave_1_out(self, query: str, file: str, num: int = None, return_score=False):
+        if num is None:
+            num = self.topk
+        query_emb = self.encoder.encode(query)[0]
+
+        lemmatized_query = self.lemmatize(query)
+
+        # move the records to dumpster
+        self._move_records(self.weaviate_collection, self.weaviate_dumpster, file)
+
+        import weaviate
+        response = self.weaviate_collection.query.hybrid(
+            query=lemmatized_query,
+            vector=query_emb,
+            limit=num,
+            return_metadata=self.weaviate_metadata_config,
+            # query_properties=["name_lemmas^2", "contents_lemmas"],
+            # query_properties=["name_lemmas^0", "contents_lemmas"],
+            alpha=self.alpha,
+            fusion_type=weaviate.classes.query.HybridFusion.RELATIVE_SCORE,
+        )
+
+        results = []
+        scores = []
+
+        for o in response.objects:
+            doc = {
+                'title': o.properties['name'],
+                'text': o.properties['contents'],
+                # 'contents': f"{o.properties['name']}\n{o.properties['contents']}",
+                'contents': f"{o.properties['contents']}",
+            }
+            results.append(doc)
+            scores.append(float(o.metadata.score))
+
+        # move back the records
+        self._move_records(self.weaviate_dumpster, self.weaviate_collection, file, delete_from_src=False)
+
+        if return_score:
+            return results, scores
+        return results
+
 
     def _search(self, query: str, num: int = None, return_score=False):
         if num is None:

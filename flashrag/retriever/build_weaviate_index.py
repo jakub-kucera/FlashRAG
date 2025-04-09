@@ -30,6 +30,7 @@ def create_weaviate_index(
             # distance_metric=wvc.config.VectorDistances.L2_SQUARED,
             distance_metric=wvc.config.VectorDistances.DOT,
         ),
+        multi_tenancy_config=wvc.config.Configure.multi_tenancy(enabled=True),
         properties=[
             wvc.config.Property(
                 name="orig_id",
@@ -38,7 +39,7 @@ def create_weaviate_index(
             wvc.config.Property(
                 name="file",
                 data_type=wvc.config.DataType.TEXT,
-                index_filterable=False,
+                index_filterable=True,
                 index_searchable=False,
             ),
             wvc.config.Property(
@@ -98,6 +99,10 @@ def create_weaviate_index(
         ]
     )
 
+    tenants = [wvc.tenants.Tenant(name="default"), wvc.tenants.Tenant(name="tmp")]
+    nss_corpus = client.collections.get(collection_name)
+    nss_corpus.tenants.create(tenants)
+
     # Optional: list all collections to confirm creation
     existing_collections = client.collections.list_all()
     print(f"Existing collections: {existing_collections}")
@@ -140,7 +145,7 @@ def create_weaviate_index(
         )
 
     # Get the collection reference
-    nss_corpus = client.collections.get(collection_name)
+    nss_corpus = client.collections.get(collection_name).with_tenant("default")
 
     # Insert in batches
     for i in range(0, len(weaviate_objs), batch_size):
