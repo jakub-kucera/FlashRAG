@@ -528,7 +528,7 @@ class WeaviateRetriever(BaseTextRetriever):
         lemmatized_query = self.lemmatize(query)
 
         # move the records to dumpster
-        self._move_records(self.weaviate_collection, self.weaviate_dumpster, file)
+        self._move_records(self.weaviate_collection, self.weaviate_dumpster, file, delete_from_src=True)
 
         import weaviate
         response = self.weaviate_collection.query.hybrid(
@@ -556,7 +556,7 @@ class WeaviateRetriever(BaseTextRetriever):
             scores.append(float(o.metadata.score))
 
         # move back the records
-        self._move_records(self.weaviate_dumpster, self.weaviate_collection, file, delete_from_src=False)
+        self._move_records(self.weaviate_dumpster, self.weaviate_collection, file, delete_from_src=True)
 
         if return_score:
             return results, scores

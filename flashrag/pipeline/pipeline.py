@@ -179,7 +179,7 @@ class SequentialPipeline(BasicPipeline):
     def answer_leave_one_out(self, dataset):
         retrieval_results = []
         for i in dataset:
-            retrieval_results.append(self.retriever.search_leave_1_out(query=i.question, files=i.metadata['file'], file=i.metadata['file']))
+            retrieval_results.append(self.retriever.search_leave_1_out(query=i.question, file=i.metadata['file']))
         # self.retriever.batch_search(input_query)
         dataset.update_output("retrieval_result", retrieval_results)
         dataset.update_output("retrieval_count", [1] * len(retrieval_results))

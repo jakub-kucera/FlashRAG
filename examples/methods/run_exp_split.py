@@ -222,7 +222,7 @@ def react_agent(args):
 
 
 def legal_naive(args):
-    save_note = "legal_naive"
+    save_note = "legal_naive_leave_1_out"
     config_dict = {"save_note": save_note, "gpu_id": args.gpu_id, "dataset_name": args.dataset_name, "split": args.split}
     # disables creating new directory for evaluation
     config_dict["disable_save"] = args.evaluate_only
@@ -277,7 +277,7 @@ if __name__ == "__main__":
         "adaptive": adaptive,
         "crag": crag,
         "react-agent": react_agent,
-        "legal-naive": legal_naive,
+        "legal-naive-leave-1-out": legal_naive,
     }
 
     # TODO resolve config/dataset loading for evaluate only
