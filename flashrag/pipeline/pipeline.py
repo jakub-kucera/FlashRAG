@@ -208,7 +208,7 @@ class SequentialPipeline(BasicPipeline):
             if not self.use_fid:
                 input_prompts = [
                     self.prompt_template.get_string(question=i.question, choices=i.choices,
-                                                    retrieval_result=self.prompt_template.format_weaviate_reference(i.retrieval_result))
+                                                    formatted_reference=self.prompt_template.format_weaviate_reference(i.retrieval_result))
                     for i in dataset
                 ]
 
