@@ -549,8 +549,7 @@ class WeaviateRetriever(BaseTextRetriever):
             doc = {
                 'title': o.properties['name'],
                 'text': o.properties['contents'],
-                # 'contents': f"{o.properties['name']}\n{o.properties['contents']}",
-                'contents': f"{o.properties['contents']}",
+                **o.properties
             }
             results.append(doc)
             scores.append(float(o.metadata.score))
@@ -588,7 +587,7 @@ class WeaviateRetriever(BaseTextRetriever):
             doc = {
                 'title': o.properties['name'],
                 'text': o.properties['contents'],
-                'contents': f"{o.properties['name']}\n{o.properties['contents']}",
+                **o.properties
             }
             results.append(doc)
             scores.append(float(o.metadata.score))

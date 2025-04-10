@@ -189,7 +189,9 @@ class SequentialPipeline(BasicPipeline):
             if "llmlingua" in self.refiner.name and input_prompt_flag:
                 # input prompt
                 input_prompts = [
-                    self.prompt_template.get_string(question=i.question, choices=i.choices, retrieval_result=i.retrieval_result)
+                    self.prompt_template.get_string(question=i.question,
+                                                    choices=i.choices,
+                                                    formatted_references=self.prompt_template.format_weaviate_reference(i.retrieval_result))
                     for i in dataset]
                 dataset.update_output("prompt", input_prompts)
                 input_prompts = self.refiner.batch_run(dataset)

@@ -212,3 +212,16 @@ class PromptTemplate:
                 format_reference += f"Doc {idx+1}(Title: {title}) {text}\n"
 
         return format_reference
+
+    def format_weaviate_reference(self, retrieval_result):
+        format_reference = ""
+        for idx, doc_item in enumerate(retrieval_result):
+            format_reference += \
+            f"""Document chunk {idx+1}: 
+            Document Title: {doc_item['title']}
+            Chunk content: {doc_item['contents']}
+            Document verdict: {doc_item['verdict']}
+            Right to compensation: {doc_item['right_to_compensation']}
+            Possibility Of appeal: {doc_item['possibility_of_appeal']}\n"""
+        return format_reference
+
