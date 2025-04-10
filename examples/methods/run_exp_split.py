@@ -9,6 +9,8 @@ import argparse
 
 def naive(args):
     save_note = "naive"
+    if args.save_note_suffix:
+        save_note += f"_{args.save_note_suffix}"
     config_dict = {"save_note": save_note, "gpu_id": args.gpu_id, "dataset_name": args.dataset_name, "split": args.split}
     # disables creating new directory for evaluation
     config_dict["disable_save"] = args.evaluate_only
@@ -36,6 +38,8 @@ def naive(args):
 
 def zero_shot(args):
     save_note = "zero-shot"
+    if args.save_note_suffix:
+        save_note += f"_{args.save_note_suffix}"
     config_dict = {"save_note": save_note, "gpu_id": args.gpu_id, "dataset_name": args.dataset_name, "split": args.split}
     # disables creating new directory for evaluation
     config_dict["disable_save"] = args.evaluate_only
@@ -77,11 +81,14 @@ def selfrag(args):
         in ICLR 2024.
         Official repo: https://github.com/AkariAsai/self-rag
     """
+    save_note = "self-rag"
+    if args.save_note_suffix:
+        save_note += f"_{args.save_note_suffix}"
     config_dict = {
         "generator_model": "selfrag-llama2-7B",
         "generator_model_path": "model/selfrag_llama2_7b",
         "framework": "vllm",
-        "save_note": "self-rag",
+        "save_note": save_note,
         "gpu_id": args.gpu_id,
         "generation_params": {
             "max_tokens": 100,
@@ -131,12 +138,15 @@ def selfrag(args):
 
 def adaptive(args):
     judger_name = "adaptive-rag"
+    save_note = "adaptive-rag"
+    if args.save_note_suffix:
+        save_note += f"_{args.save_note_suffix}"
     model_path = "illuminoplanet/adaptive-rag-classifier"
 
     config_dict = {
         "judger_name": judger_name,
         "judger_config": {"model_path": model_path},
-        "save_note": "adaptive-rag",
+        "save_note": save_note,
         "gpu_id": args.gpu_id,
         "dataset_name": args.dataset_name,
         "split": args.split,
@@ -169,6 +179,8 @@ def adaptive(args):
 
 def crag(args):
     save_note = "crag"
+    if args.save_note_suffix:
+        save_note += f"_{args.save_note_suffix}"
     config_dict = {"save_note": save_note, "gpu_id": args.gpu_id, "dataset_name": args.dataset_name, "split": args.split}
     # disables creating new directory for evaluation
     config_dict["disable_save"] = args.evaluate_only
@@ -196,6 +208,8 @@ def crag(args):
 
 def react_agent(args):
     save_note = "react-agent"
+    if args.save_note_suffix:
+        save_note += f"_{args.save_note_suffix}"
     config_dict = {"save_note": save_note, "gpu_id": args.gpu_id, "dataset_name": args.dataset_name, "split": args.split}
     # disables creating new directory for evaluation
     config_dict["disable_save"] = args.evaluate_only
@@ -223,6 +237,8 @@ def react_agent(args):
 
 def legal_naive(args):
     save_note = "legal_naive_leave_1_out"
+    if args.save_note_suffix:
+        save_note += f"_{args.save_note_suffix}"
     config_dict = {"save_note": save_note, "gpu_id": args.gpu_id, "dataset_name": args.dataset_name, "split": args.split}
     # disables creating new directory for evaluation
     config_dict["disable_save"] = args.evaluate_only
@@ -285,6 +301,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Running exp")
     parser.add_argument("--method_name", type=str, choices=func_dict.keys())
     parser.add_argument("--split", type=str)
+    parser.add_argument("--save_note_suffix", type=str, default="")
     parser.add_argument("--dataset_name", type=str)
     parser.add_argument("--gpu_id", type=str)
 
