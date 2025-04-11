@@ -464,6 +464,7 @@ class WeaviateRetriever(BaseTextRetriever):
         self.weaviate_collection_name = self._config["weaviate_collection_name"]
         self.weaviate_language = self._config["weaviate_language"]
         self.alpha = self._config["weaviate_alpha"]
+        self.weaviate_query_properties = self._config.final_config.get("weaviate_query_properties", None)
 
     def load_model(self):
         import stanza
@@ -536,8 +537,8 @@ class WeaviateRetriever(BaseTextRetriever):
             vector=query_emb,
             limit=num,
             return_metadata=self.weaviate_metadata_config,
-            # query_properties=["name_lemmas^2", "contents_lemmas"],
-            # query_properties=["name_lemmas^0", "contents_lemmas"],
+            # query_properties=["name_lemmas", "contents_lemmas", "verdict", "referenced_paragraphs", "referenced_entities"],
+            query_properties=self.weaviate_query_properties,
             alpha=self.alpha,
             fusion_type=weaviate.classes.query.HybridFusion.RELATIVE_SCORE,
         )

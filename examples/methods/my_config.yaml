@@ -125,3 +125,4 @@ google_search_cse_id: ~
 weaviate_collection_name: "NSS_corpus_full"
 weaviate_language: "cs"
 weaviate_alpha: 0.5
+weaviate_search_properties: ["name_lemmas", "contents_lemmas", "verdict", "referenced_paragraphs", "referenced_entities"]
