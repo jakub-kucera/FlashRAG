@@ -1,3 +1,4 @@
+import json
 import os
 
 from flashrag import pipeline
@@ -14,6 +15,9 @@ def naive(args):
     config_dict = {"save_note": save_note, "gpu_id": args.gpu_id, "dataset_name": args.dataset_name, "split": args.split}
     # disables creating new directory for evaluation
     config_dict["disable_save"] = args.evaluate_only
+
+    config_dict_override = json.loads(args.config_override) if args.config_override else {}
+    config_dict.update(config_dict_override)
 
     # preparation
     config = Config(args.config_file, config_dict)
@@ -43,6 +47,9 @@ def zero_shot(args):
     config_dict = {"save_note": save_note, "gpu_id": args.gpu_id, "dataset_name": args.dataset_name, "split": args.split}
     # disables creating new directory for evaluation
     config_dict["disable_save"] = args.evaluate_only
+
+    config_dict_override = json.loads(args.config_override) if args.config_override else {}
+    config_dict.update(config_dict_override)
 
     # preparation
     config = Config(args.config_file, config_dict)
@@ -102,6 +109,9 @@ def selfrag(args):
     # disables creating new directory for evaluation
     config_dict["disable_save"] = args.evaluate_only
 
+    config_dict_override = json.loads(args.config_override) if args.config_override else {}
+    config_dict.update(config_dict_override)
+
     config = Config(args.config_file, config_dict)
     all_split = get_dataset(config)
     test_data = all_split[args.split]
@@ -154,6 +164,9 @@ def adaptive(args):
     # disables creating new directory for evaluation
     config_dict["disable_save"] = args.evaluate_only
 
+    config_dict_override = json.loads(args.config_override) if args.config_override else {}
+    config_dict.update(config_dict_override)
+
     # preparation
     config = Config(args.config_file, config_dict)
     all_split = get_dataset(config)
@@ -185,6 +198,9 @@ def crag(args):
     # disables creating new directory for evaluation
     config_dict["disable_save"] = args.evaluate_only
 
+    config_dict_override = json.loads(args.config_override) if args.config_override else {}
+    config_dict.update(config_dict_override)
+
     # preparation
     config = Config(args.config_file, config_dict)
     all_split = get_dataset(config)
@@ -214,6 +230,9 @@ def react_agent(args):
     # disables creating new directory for evaluation
     config_dict["disable_save"] = args.evaluate_only
 
+    config_dict_override = json.loads(args.config_override) if args.config_override else {}
+    config_dict.update(config_dict_override)
+
     # preparation
     config = Config(args.config_file, config_dict)
     all_split = get_dataset(config)
@@ -242,6 +261,9 @@ def legal_naive(args):
     config_dict = {"save_note": save_note, "gpu_id": args.gpu_id, "dataset_name": args.dataset_name, "split": args.split}
     # disables creating new directory for evaluation
     config_dict["disable_save"] = args.evaluate_only
+
+    config_dict_override = json.loads(args.config_override) if args.config_override else {}
+    config_dict.update(config_dict_override)
 
     # preparation
     config = Config(args.config_file, config_dict)
@@ -309,6 +331,8 @@ if __name__ == "__main__":
     parser.add_argument("--generated-dataset-path", type=str, default=None, help="path to generated dataset for evaluation only")
     parser.add_argument("--evaluate-only", action="store_true", default=False)
     parser.add_argument("--config-file", type=str, default="my_config.yaml")
+    parser.add_argument("--config-override", type=str, default=None, help="config override in json format")
+
     # TODO add constraints
     #   generated_dataset_path only if generate-only
     #   evaluate-only XOR generate-only
