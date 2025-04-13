@@ -185,7 +185,8 @@ def main():
         corpus_path=args.corpus_path,
         embeddings_path=args.embeddings_path,
         embedding_dim=args.embedding_dim,
-        batch_size=args.batch_size
+        batch_size=args.batch_size,
+        distance_metric=args.distance_metric,
     )
 
 
