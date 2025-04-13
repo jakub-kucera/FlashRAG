@@ -4,6 +4,13 @@ import numpy as np
 import weaviate
 import weaviate.classes as wvc
 
+DISTANCE_METRIC_MAPPING = {
+    "COSINE": wvc.config.VectorDistances.COSINE,
+    "L2_SQUARED": wvc.config.VectorDistances.L2_SQUARED,
+    "DOT_PRODUCT": wvc.config.VectorDistances.DOT,
+    "MANHATTAN": wvc.config.VectorDistances.MANHATTAN,
+    "HAMMING": wvc.config.VectorDistances.HAMMING,
+}
 
 def create_weaviate_index(
         host,
@@ -12,7 +19,8 @@ def create_weaviate_index(
         corpus_path,
         embeddings_path,
         embedding_dim,
-        batch_size
+        batch_size,
+        distance_metric,
 ):
     # Connect to Weaviate
     client = weaviate.connect_to_local(host=host, port=port)
@@ -27,8 +35,7 @@ def create_weaviate_index(
         vectorizer_config=wvc.config.Configure.Vectorizer.none(),
         # vector_index_config=wvc.config.Configure.VectorIndex.hnsw(
         vector_index_config=wvc.config.Configure.VectorIndex.flat(
-            # distance_metric=wvc.config.VectorDistances.L2_SQUARED,
-            distance_metric=wvc.config.VectorDistances.DOT,
+            distance_metric=DISTANCE_METRIC_MAPPING[distance_metric],
         ),
         multi_tenancy_config=wvc.config.Configure.multi_tenancy(enabled=True),
         properties=[
@@ -167,6 +174,8 @@ def main():
     parser.add_argument("--embeddings_path", type=str, help="Path to the embeddings memmap file.", required=True)
     parser.add_argument("--embedding_dim", type=int, default=768, help="Dimensionality of the embeddings.")
     parser.add_argument("--batch_size", type=int, default=10000, help="Number of objects to insert per batch.")
+    parser.add_argument("--distance_metric", type=str, default="L2_SQUARED",
+                        help=f"Distance metric for vector index. Options: {list(DISTANCE_METRIC_MAPPING.keys())}.")
 
     args = parser.parse_args()
     create_weaviate_index(
