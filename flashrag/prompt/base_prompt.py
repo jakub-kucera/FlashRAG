@@ -50,6 +50,7 @@ class PromptTemplate:
         self.prompt_amendment = prompt_amendment
         self.enable_chat = enable_chat
         self.reference_template = reference_template
+        self.retrieved_document_prompt_properties = self.config.final_config.get("retrieved_document_prompt_properties", "")
 
         # self._check_placeholder()
 
@@ -216,12 +217,24 @@ class PromptTemplate:
     def format_weaviate_reference(self, retrieval_result):
         format_reference = ""
         for idx, doc_item in enumerate(retrieval_result):
-            format_reference += \
-            f"""Document chunk {idx+1}: 
-            Document Title: {doc_item['title']}
-            Chunk content: {doc_item['contents']}
-            Document verdict: {doc_item['verdict']}
-            Right to compensation: {doc_item['right_to_compensation']}
-            Possibility Of appeal: {doc_item['possibility_of_appeal']}\n"""
+            chunk = ""
+            if "number" in self.retrieved_document_prompt_properties:
+                chunk += f"Document #{idx+1}:\n---------------\n"
+            if "title" in self.retrieved_document_prompt_properties:
+                chunk += f"Title: {doc_item['title']}\n"
+            if "contents" in self.retrieved_document_prompt_properties:
+                chunk += f"Content: {doc_item['contents']}\n"
+            if "verdict" in self.retrieved_document_prompt_properties:
+                chunk += f"Document verdict: {doc_item['verdict']}\n"
+            if "right_to_compensation" in self.retrieved_document_prompt_properties:
+                chunk += f"Right to compensation: {doc_item['right_to_compensation']}\n"
+            if "possibility_of_appeal" in self.retrieved_document_prompt_properties:
+                chunk += f"Possibility Of appeal: {doc_item['possibility_of_appeal']}\n"
+            if "referenced_entities" in self.retrieved_document_prompt_properties:
+                chunk += f"Referenced entities: {doc_item['referenced_entities']}\n"
+            if "referenced_paragraphs" in self.retrieved_document_prompt_properties:
+                chunk += f"Referenced paragraphs: {doc_item['referenced_paragraphs']}\n"
+            chunk += "\n"
+            format_reference += chunk
         return format_reference
 
