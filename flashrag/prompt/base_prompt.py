@@ -219,7 +219,7 @@ class PromptTemplate:
         for idx, doc_item in enumerate(retrieval_result):
             chunk = ""
             if "number" in self.retrieved_document_prompt_properties:
-                chunk += f"Document #{idx+1}:\n---------------\n"
+                chunk += f"---------------\nDocument #{idx+1}:\n"
             if "title" in self.retrieved_document_prompt_properties:
                 chunk += f"Title: {doc_item['title']}\n"
             if "contents" in self.retrieved_document_prompt_properties:
