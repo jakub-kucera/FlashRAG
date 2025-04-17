@@ -126,4 +126,4 @@ weaviate_collection_name: "NSS_corpus_full"
 weaviate_language: "cs"
 weaviate_alpha: 0.5
 weaviate_query_properties: ['contents_lemmas', 'referenced_paragraphs', 'referenced_entities']
-retrieved_document_prompt_properties: ["number", "title", "contents", "verdict", "right_to_compensation", "possibility_of_appeal", "referenced_entities", "referenced_paragraphs"]
+retrieved_document_prompt_properties: ['contents', 'referenced_paragraphs']
