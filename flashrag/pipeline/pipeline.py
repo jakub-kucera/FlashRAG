@@ -615,37 +615,39 @@ class ReActAgentPipeline(BasicPipeline):
             item.output["retrieval_result"] = self.retrieval_results
             item.output["agent_steps"] = c
 
-        def answer_leave_one_out(self, dataset: Dataset) -> Dataset:
-            """
-            Implementation of answer() that uses the ReAct agent to produce answers.
-            """
-            for item in tqdm(dataset, desc="Agent processing questions: "):
-                self.retriever_calls = 0
-                self.retrieval_results = []
+            return dataset
 
-                self.retriever.hide_data(item.metadata["file"])
+    def answer_leave_one_out(self, dataset: Dataset) -> Dataset:
+        """
+        Implementation of answer() that uses the ReAct agent to produce answers.
+        """
+        for item in tqdm(dataset, desc="Agent processing questions: "):
+            self.retriever_calls = 0
+            self.retrieval_results = []
 
-                question = item.question
+            self.retriever.hide_data(item.metadata["file"])
 
-                if choices := item.choices:
-                    user_prompt = f"""Question: '{question}'
-                    Pick the answer from one of the following choices: '{choices}'."""
-                else:
-                    user_prompt = f"question: `{question}`"
+            question = item.question
 
-                # for c, s in enumerate(self.agent.stream(input={"messages": [("user", user_prompt)]}, stream_mode="values"), start=1):
-                #     message = s["messages"][-1]
-                for c, s in enumerate(
-                        self.agent.stream(input={"messages": [("user", user_prompt)]}, stream_mode="messages"),
-                        start=1):
-                    message = s["messages"][-1]
-                final_answer = message.content
+            if choices := item.choices:
+                user_prompt = f"""Question: '{question}'
+                Pick the answer from one of the following choices: '{choices}'."""
+            else:
+                user_prompt = f"question: `{question}`"
 
-                item.output["pred"] = final_answer
-                item.output["retrieval_count"] = self.retriever_calls
-                item.output["retrieval_result"] = self.retrieval_results
-                item.output["agent_steps"] = c
+            # for c, s in enumerate(self.agent.stream(input={"messages": [("user", user_prompt)]}, stream_mode="values"), start=1):
+            #     message = s["messages"][-1]
+            for c, s in enumerate(
+                    self.agent.stream(input={"messages": [("user", user_prompt)]}, stream_mode="messages"),
+                    start=1):
+                message = s["messages"][-1]
+            final_answer = message.content
 
-                self.retriever.unhide_data(item.metadata["file"])
+            item.output["pred"] = final_answer
+            item.output["retrieval_count"] = self.retriever_calls
+            item.output["retrieval_result"] = self.retrieval_results
+            item.output["agent_steps"] = c
+
+            self.retriever.unhide_data(item.metadata["file"])
 
         return dataset
