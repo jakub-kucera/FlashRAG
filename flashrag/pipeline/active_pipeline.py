@@ -4,6 +4,8 @@ from typing import List, Tuple
 import math
 import numpy as np
 from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizerFast
+
+from flashrag.dataset import Dataset
 from flashrag.utils import get_retriever, get_generator, selfask_pred_parse, ircot_pred_parse
 from flashrag.pipeline import BasicPipeline
 from flashrag.dataset.utils import get_batch_dataset, merge_batch_dataset
@@ -632,6 +634,17 @@ class SelfRAGPipeline(BasicPipeline):
 
         dataset = run_func(dataset)
         return dataset
+
+    def answer_leave_one_out(self, dataset, long_form=False):
+        run_func = self.run_batch_pred_long_form if long_form else self.run_batch_pred
+        output_data = []
+        for data in dataset.data:
+            dataset_single = Dataset(config=dataset.config, data=[data])
+            output_single_dataset = run_func(dataset_single)
+            output_data.append(output_single_dataset.data[0])
+        output_dataset = Dataset(config=dataset.config, data=output_data)
+        return output_dataset
+
 
     def run_batch_pred(self, dataset):
         questions = dataset.question

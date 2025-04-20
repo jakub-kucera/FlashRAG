@@ -146,6 +146,71 @@ def selfrag(args):
         result.save(evaluated_dataset_path)
 
 
+def selfrag_leave_1_out(args):
+    """
+    Reference:
+        Akari Asai et al. " SELF-RAG: Learning to Retrieve, Generate and Critique through self-reflection"
+        in ICLR 2024.
+        Official repo: https://github.com/AkariAsai/self-rag
+    """
+    save_note = "self-rag_leave_1_out"
+    if args.save_note_suffix:
+        save_note += f"_{args.save_note_suffix}"
+    config_dict = {
+        "generator_model": "selfrag-llama2-7B",
+        "generator_model_path": "/home/kucerj56/models/selfrag/selfrag_llama2_7b",
+        "framework": "vllm",
+        "save_note": save_note,
+        "gpu_id": args.gpu_id,
+        "generation_params": {
+            "max_tokens": 100,
+            "temperature": 0.0,
+            "top_p": 1.0,
+            "skip_special_tokens": False,
+        },
+        "dataset_name": args.dataset_name,
+        "split": args.split,
+    }
+    # disables creating new directory for evaluation
+    config_dict["disable_save"] = args.evaluate_only
+
+    config_dict_override = json.loads(args.config_override) if args.config_override else {}
+    config_dict.update(config_dict_override)
+
+    config = Config(args.config_file, config_dict)
+    all_split = get_dataset(config)
+    test_data = all_split[args.split]
+    generated_dataset_path = args.generated_dataset_path
+
+    from flashrag.pipeline import SelfRAGPipeline
+
+    pipeline = SelfRAGPipeline(
+        config,
+        threshold=0.2,
+        max_depth=2,
+        beam_width=2,
+        w_rel=1.0,
+        w_sup=1.0,
+        w_use=1.0,
+        use_grounding=True,
+        use_utility=True,
+        use_seqscore=True,
+        ignore_cont=True,
+        mode="adaptive_retrieval",
+    )
+
+    if not args.evaluate_only:
+        result = pipeline.answer_leave_one_out(test_data, long_form=False)
+        generated_dataset_path = os.path.join(config["save_dir"], "generated.json")
+        result.save(generated_dataset_path)
+
+    if not args.generate_only:
+        dataset = Dataset(config, generated_dataset_path)
+        result = pipeline.evaluate(dataset)
+        evaluated_dataset_path = os.path.join(config["save_dir"], "evaluated.json")
+        result.save(evaluated_dataset_path)
+
+
 def adaptive(args):
     judger_name = "adaptive-rag"
     save_note = "adaptive-rag"
@@ -428,6 +493,7 @@ if __name__ == "__main__":
         "adaptive-leave-1-out": adaptive_leave_1_out,
         "crag-leave-1-out": crag_leave_1_out,
         "react-agent-leave-1-out": react_agent_leave_1_out,
+        "selfrag-leave-1-out": selfrag_leave_1_out,
     }
 
     # TODO resolve config/dataset loading for evaluate only
