@@ -353,6 +353,38 @@ class AdaptivePipeline(BasicPipeline):
         return dataset
 
 
+    def answer_leave_one_out(self, dataset):
+        # judge_result: choice result representing which pipeline to use(e.g. A, B, C)
+        # TODO edit to not load judge and generator models to memory at the same time
+        judge_result = self.judger.judge(dataset)
+        dataset.update_output("judge_result", judge_result)
+
+        # split dataset based on judge_result
+        # dataset_split = split_dataset(dataset, judge_result)
+        # for symbol, symbol_dataset in dataset_split.items():
+        output_data = []
+        for symbol, data in zip(judge_result, dataset.data):
+            dataset_single = Dataset(config=dataset.config, data=[data])
+            if symbol == "A":
+                output_single_dataset = self.norag_pipeline.naive_run(dataset_single, do_eval=False)
+            elif symbol == "B":
+                # output_single_dataset = self.single_hop_pipeline.run(dataset_single, do_eval=False)
+                output_single_dataset = self.single_hop_pipeline.answer_leave_one_out(dataset_single, do_eval=False)
+            elif symbol == "C":
+                self.retriever.hide_data(data.metadata["file"])
+                output_single_dataset = self.multi_hop_pipeline.run(dataset_single, do_eval=False)
+                self.retriever.unhide_data(data.metadata["file"])
+            else:
+                assert False, "Unknown symbol!"
+            output_data.append(output_single_dataset.data)
+
+        # merge datasets into original format
+        # dataset = merge_dataset(dataset_split, judge_result)
+        output_dataset = Dataset(config=dataset.config, data=output_data)
+
+        return output_dataset
+
+
 class CorrectiveRAGPipeline(BasicPipeline):
 
         # based on https://docs.llamaindex.ai/en/stable/examples/workflow/corrective_rag_pack/
@@ -408,7 +440,7 @@ class CorrectiveRAGPipeline(BasicPipeline):
             from flashrag.retriever import TavilySearchRetriever
             self.web_retriever = TavilySearchRetriever(config=self.config)
 
-        def answer(self, dataset):
+        def answer(self, dataset, leave_one_out=False):
             input_query = dataset.question
             # retrieval_results = [[
             #     "nothing found",
@@ -416,7 +448,14 @@ class CorrectiveRAGPipeline(BasicPipeline):
             # ]] * len(dataset)
 
             #  retrieval
-            retrieval_results = self.retriever.batch_search(input_query)
+            # retrieval_results = self.retriever.batch_search(input_query)
+            retrieval_results = []
+            for i in dataset:
+                if leave_one_out:
+                    retrieval_result = self.retriever.search_leave_1_out(query=i.question, file=i.metadata['file'])
+                else:
+                    retrieval_result = self.retriever.search(i.question)
+                retrieval_results.append(retrieval_result)
             dataset.update_output("retrieval_result", retrieval_results)
 
             # rate retrieval
@@ -575,5 +614,38 @@ class ReActAgentPipeline(BasicPipeline):
             item.output["retrieval_count"] = self.retriever_calls
             item.output["retrieval_result"] = self.retrieval_results
             item.output["agent_steps"] = c
+
+        def answer_leave_one_out(self, dataset: Dataset) -> Dataset:
+            """
+            Implementation of answer() that uses the ReAct agent to produce answers.
+            """
+            for item in tqdm(dataset, desc="Agent processing questions: "):
+                self.retriever_calls = 0
+                self.retrieval_results = []
+
+                self.retriever.hide_data(item.metadata["file"])
+
+                question = item.question
+
+                if choices := item.choices:
+                    user_prompt = f"""Question: '{question}'
+                    Pick the answer from one of the following choices: '{choices}'."""
+                else:
+                    user_prompt = f"question: `{question}`"
+
+                # for c, s in enumerate(self.agent.stream(input={"messages": [("user", user_prompt)]}, stream_mode="values"), start=1):
+                #     message = s["messages"][-1]
+                for c, s in enumerate(
+                        self.agent.stream(input={"messages": [("user", user_prompt)]}, stream_mode="messages"),
+                        start=1):
+                    message = s["messages"][-1]
+                final_answer = message.content
+
+                item.output["pred"] = final_answer
+                item.output["retrieval_count"] = self.retriever_calls
+                item.output["retrieval_result"] = self.retrieval_results
+                item.output["agent_steps"] = c
+
+                self.retriever.unhide_data(item.metadata["file"])
 
         return dataset

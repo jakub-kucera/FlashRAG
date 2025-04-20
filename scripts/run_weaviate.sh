@@ -8,6 +8,6 @@
 
 cd ~/weaviate
 # remove raft dir - needed so that this can be run from any Cluster FIT directories
-rm -rf ~/weaviate/data/raft
+rm -rf ~/weaviate/data
 #~/weaviate/weaviate-server --host 0.0.0.0 --port 8080 --scheme HTTP
 env -i ~/weaviate/weaviate-server --host 0.0.0.0 --port 8080 --scheme http

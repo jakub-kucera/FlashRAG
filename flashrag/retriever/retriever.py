@@ -562,6 +562,11 @@ class WeaviateRetriever(BaseTextRetriever):
             return results, scores
         return results
 
+    def hide_data(self, file: str):
+        self._move_records(self.weaviate_collection, self.weaviate_dumpster, file, delete_from_src=True)
+
+    def unhide_data(self, file: str):
+        self._move_records(self.weaviate_dumpster, self.weaviate_collection, file, delete_from_src=True)
 
     def _search(self, query: str, num: int = None, return_score=False):
         if num is None:

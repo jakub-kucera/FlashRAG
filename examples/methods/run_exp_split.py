@@ -190,6 +190,50 @@ def adaptive(args):
         result.save(evaluated_dataset_path)
 
 
+def adaptive_leave_1_out(args):
+    judger_name = "adaptive-rag"
+    save_note = "adaptive-rag_leave_1_out"
+    if args.save_note_suffix:
+        save_note += f"_{args.save_note_suffix}"
+    model_path = "illuminoplanet/adaptive-rag-classifier"
+
+    config_dict = {
+        "judger_name": judger_name,
+        "judger_config": {"model_path": model_path},
+        "save_note": save_note,
+        "gpu_id": args.gpu_id,
+        "dataset_name": args.dataset_name,
+        "split": args.split,
+    }
+    # disables creating new directory for evaluation
+    config_dict["disable_save"] = args.evaluate_only
+
+    config_dict_override = json.loads(args.config_override) if args.config_override else {}
+    config_dict.update(config_dict_override)
+
+    # preparation
+    config = Config(args.config_file, config_dict)
+    all_split = get_dataset(config)
+    test_data = all_split[args.split]
+    generated_dataset_path = args.generated_dataset_path
+
+    from flashrag.pipeline import AdaptivePipeline
+
+    pipeline = AdaptivePipeline(config)
+    # result = pipeline.run(test_data)
+
+    if not args.evaluate_only:
+        result = pipeline.answer_leave_one_out(test_data)
+        generated_dataset_path = os.path.join(config["save_dir"], "generated.json")
+        result.save(generated_dataset_path)
+
+    if not args.generate_only:
+        dataset = Dataset(config, generated_dataset_path)
+        result = pipeline.evaluate(dataset)
+        evaluated_dataset_path = os.path.join(config["save_dir"], "evaluated.json")
+        result.save(evaluated_dataset_path)
+
+
 def crag(args):
     save_note = "crag"
     if args.save_note_suffix:
@@ -220,6 +264,39 @@ def crag(args):
         result = pipeline.evaluate(dataset)
         evaluated_dataset_path = os.path.join(config["save_dir"], "evaluated.json")
         result.save(evaluated_dataset_path)
+
+
+def crag_leave_1_out(args):
+    save_note = "crag_leave_1_out"
+    if args.save_note_suffix:
+        save_note += f"_{args.save_note_suffix}"
+    config_dict = {"save_note": save_note, "gpu_id": args.gpu_id, "dataset_name": args.dataset_name, "split": args.split}
+    # disables creating new directory for evaluation
+    config_dict["disable_save"] = args.evaluate_only
+
+    config_dict_override = json.loads(args.config_override) if args.config_override else {}
+    config_dict.update(config_dict_override)
+
+    # preparation
+    config = Config(args.config_file, config_dict)
+    all_split = get_dataset(config)
+    test_data = all_split[args.split]
+    generated_dataset_path = args.generated_dataset_path
+
+    from flashrag.pipeline import CorrectiveRAGPipeline
+    pipeline = CorrectiveRAGPipeline(config)
+
+    if not args.evaluate_only:
+        result = pipeline.answer(test_data, leave_one_out=True)
+        generated_dataset_path = os.path.join(config["save_dir"], "generated.json")
+        result.save(generated_dataset_path)
+
+    if not args.generate_only:
+        dataset = Dataset(config, generated_dataset_path)
+        result = pipeline.evaluate(dataset)
+        evaluated_dataset_path = os.path.join(config["save_dir"], "evaluated.json")
+        result.save(evaluated_dataset_path)
+
 
 
 def react_agent(args):
@@ -316,6 +393,9 @@ if __name__ == "__main__":
         "crag": crag,
         "react-agent": react_agent,
         "legal-naive-leave-1-out": legal_naive,
+        "adaptive-leave-1-out": adaptive_leave_1_out,
+        "crag-leave-1-out": crag_leave_1_out,
+        "react-agent-leave-1-out": react_agent_leave_1_out,
     }
 
     # TODO resolve config/dataset loading for evaluate only
