@@ -331,6 +331,38 @@ def react_agent(args):
         result.save(evaluated_dataset_path)
 
 
+def react_agent_leave_1_out(args):
+    save_note = "react-agent_leave_1_out"
+    if args.save_note_suffix:
+        save_note += f"_{args.save_note_suffix}"
+    config_dict = {"save_note": save_note, "gpu_id": args.gpu_id, "dataset_name": args.dataset_name, "split": args.split}
+    # disables creating new directory for evaluation
+    config_dict["disable_save"] = args.evaluate_only
+
+    config_dict_override = json.loads(args.config_override) if args.config_override else {}
+    config_dict.update(config_dict_override)
+
+    # preparation
+    config = Config(args.config_file, config_dict)
+    all_split = get_dataset(config)
+    test_data = all_split[args.split]
+    generated_dataset_path = args.generated_dataset_path
+
+    from flashrag.pipeline import ReActAgentPipeline
+    pipeline = ReActAgentPipeline(config)
+
+    if not args.evaluate_only:
+        result = pipeline.answer_leave_one_out(test_data)
+        generated_dataset_path = os.path.join(config["save_dir"], "generated.json")
+        result.save(generated_dataset_path)
+
+    if not args.generate_only:
+        dataset = Dataset(config, generated_dataset_path)
+        result = pipeline.evaluate(dataset)
+        evaluated_dataset_path = os.path.join(config["save_dir"], "evaluated.json")
+        result.save(evaluated_dataset_path)
+
+
 def legal_naive(args):
     save_note = "legal_naive_leave_1_out"
     if args.save_note_suffix:
