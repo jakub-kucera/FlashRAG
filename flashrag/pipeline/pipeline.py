@@ -376,7 +376,7 @@ class AdaptivePipeline(BasicPipeline):
                 self.retriever.unhide_data(data.metadata["file"])
             else:
                 assert False, "Unknown symbol!"
-            output_data.append(output_single_dataset.data)
+            output_data.append(output_single_dataset.data[0])
 
         # merge datasets into original format
         # dataset = merge_dataset(dataset_split, judge_result)
