@@ -503,7 +503,15 @@ class CorrectiveRAGPipeline(BasicPipeline):
             web_search_results = []
             for c, item in tqdm(enumerate(dataset), desc="Web search: "):
                 if item.web_search_query:
-                    web_search_results.append(self.web_retriever.search(item.web_search_query))
+                    if len(item.web_search_query) < 4:
+                        print(f"Invalid Web search query: {item.web_search_query}")
+                        web_search_results.append(None)
+                    elif len(item.web_search_query) >= 400:
+                        print(f"Invalid Web search query: {item.web_search_query}")
+                        shortened_query = item.web_search_query[:399]
+                        web_search_results.append(shortened_query)
+                    else:
+                        web_search_results.append(self.web_retriever.search(item.web_search_query))
                 else:
                     web_search_results.append(None)
             dataset.update_output("web_search_results", web_search_results)
