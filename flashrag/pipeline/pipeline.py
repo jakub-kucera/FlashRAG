@@ -368,8 +368,7 @@ class AdaptivePipeline(BasicPipeline):
             if symbol == "A":
                 output_single_dataset = self.norag_pipeline.naive_run(dataset_single, do_eval=False)
             elif symbol == "B":
-                # output_single_dataset = self.single_hop_pipeline.run(dataset_single, do_eval=False)
-                output_single_dataset = self.single_hop_pipeline.answer_leave_one_out(dataset_single, do_eval=False)
+                output_single_dataset = self.single_hop_pipeline.answer_leave_one_out(dataset_single)
             elif symbol == "C":
                 self.retriever.hide_data(data.metadata["file"])
                 output_single_dataset = self.multi_hop_pipeline.run(dataset_single, do_eval=False)
