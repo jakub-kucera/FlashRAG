@@ -557,7 +557,7 @@ class ReActAgentPipeline(BasicPipeline):
         else:
             self.retriever = retriever
 
-        self.ollama_model_name = config['model2ollama'][config['model_name']]
+        self.ollama_model_name = config['model2ollama'][config['generator_model']]
 
         self.llm = ChatOllama(
             model=self.ollama_model_name,
