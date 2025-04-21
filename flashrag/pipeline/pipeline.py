@@ -555,12 +555,12 @@ class ReActAgentPipeline(BasicPipeline):
         else:
             self.retriever = retriever
 
+        self.ollama_model_name = config['model2ollama'][config['model_name']]
+
         self.llm = ChatOllama(
-            model="llama3.1:8b-instruct-fp16",
-            # model="llama3.2"
-            # TODO parametrize
+            model=self.ollama_model_name,
             temperature=0,
-            num_ctx=32768
+            num_ctx=config['generator_max_input_len']
         )
 
         self.retriever_calls = 0

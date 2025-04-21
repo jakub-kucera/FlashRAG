@@ -9,6 +9,13 @@ model2path:
   llama2-13B: "meta-llama/Llama-2-13b-hf"
   llama2-13B-chat: "meta-llama/Llama-2-13b-chat-hf"
   llama3-8B-instruct: "meta-llama/Meta-Llama-3-8B-Instruct"
+  llama31-8B-instruct: "meta-llama/Llama-3.1-8B-Instruct"
+  ministral-8B-instruct: "mistralai/Ministral-8B-Instruct-2410"
+
+model2ollama:
+  llama2-7B-chat: "llama2:7b-chat"
+  llama31-8B-instruct: "llama3.1:8b-instruct-fp16"
+  ministral-8B-instruct: "nchapman/ministral-8b-instruct-2410"
 
 # Pooling methods for each embedding model
 model2pooling:
