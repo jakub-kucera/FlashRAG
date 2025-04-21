@@ -596,6 +596,7 @@ class WeaviateRetriever(BaseTextRetriever):
 
         for o in response.objects:
             doc = {
+                'id': o.properties['orig_id'],
                 'title': o.properties['name'],
                 'text': o.properties['contents'],
                 **o.properties
