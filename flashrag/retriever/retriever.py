@@ -570,11 +570,15 @@ class WeaviateRetriever(BaseTextRetriever):
         self._move_records(self.weaviate_dumpster, self.weaviate_collection, file, delete_from_src=True)
 
     def _search(self, query: str, num: int = None, return_score=False):
+        if not query:
+            print("Query is empty!")
+            if return_score:
+                return [], []
+            return []
         if num is None:
             num = self.topk
-        query_emb = self.encoder.encode(query)[0]
-        # TODO lematise query for text search
 
+        query_emb = self.encoder.encode(query)[0]
         lemmatized_query = self.lemmatize(query)
 
         response = self.weaviate_collection.query.hybrid(
