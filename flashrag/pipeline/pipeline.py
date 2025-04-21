@@ -439,7 +439,7 @@ class CorrectiveRAGPipeline(BasicPipeline):
             from flashrag.retriever import TavilySearchRetriever
             self.web_retriever = TavilySearchRetriever(config=self.config)
 
-        def answer(self, dataset, leave_one_out=False):
+        def answer(self, dataset, leave_one_out=False, enable_web=True):
             input_query = dataset.question
             # retrieval_results = [[
             #     "nothing found",
@@ -486,17 +486,20 @@ class CorrectiveRAGPipeline(BasicPipeline):
             dataset.update_output("relevance_rating", relevance_rating)
 
             # rephrase queries
-            queries_to_rephrase = {}
-            for c, item in enumerate(dataset):
-                if item.relevance_rating in ["incorrect", "ambiguous"]:
-                    queries_to_rephrase[c] = item.question
-            rephrased_queries = self.generator.generate(
-                [self.transform_web_query_prompt.get_string(query_str=query) for query in queries_to_rephrase.values()])
+            if enable_web:
+                queries_to_rephrase = {}
+                for c, item in enumerate(dataset):
+                    if item.relevance_rating in ["incorrect", "ambiguous"]:
+                        queries_to_rephrase[c] = item.question
+                rephrased_queries = self.generator.generate(
+                    [self.transform_web_query_prompt.get_string(query_str=query) for query in queries_to_rephrase.values()])
 
-            web_search_queries = []
-            for c, item in enumerate(dataset):
-                web_search_queries.append(rephrased_queries.pop(0) if c in queries_to_rephrase else None)
-            dataset.update_output("web_search_query", web_search_queries)
+                web_search_queries = []
+                for c, item in enumerate(dataset):
+                    web_search_queries.append(rephrased_queries.pop(0) if c in queries_to_rephrase else None)
+                dataset.update_output("web_search_query", web_search_queries)
+            else:
+                dataset.update_output("web_search_query", [None] * len(dataset))
 
             # web search
             web_search_results = []

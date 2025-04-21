@@ -364,6 +364,39 @@ def crag_leave_1_out(args):
 
 
 
+def crag_no_web_leave_1_out(args):
+    save_note = "crag_no_web_leave_1_out"
+    if args.save_note_suffix:
+        save_note += f"_{args.save_note_suffix}"
+    config_dict = {"save_note": save_note, "gpu_id": args.gpu_id, "dataset_name": args.dataset_name, "split": args.split}
+    # disables creating new directory for evaluation
+    config_dict["disable_save"] = args.evaluate_only
+
+    config_dict_override = json.loads(args.config_override) if args.config_override else {}
+    config_dict.update(config_dict_override)
+
+    # preparation
+    config = Config(args.config_file, config_dict)
+    all_split = get_dataset(config)
+    test_data = all_split[args.split]
+    generated_dataset_path = args.generated_dataset_path
+
+    from flashrag.pipeline import CorrectiveRAGPipeline
+    pipeline = CorrectiveRAGPipeline(config)
+
+    if not args.evaluate_only:
+        result = pipeline.answer(test_data, leave_one_out=True, enable_web=False)
+        generated_dataset_path = os.path.join(config["save_dir"], "generated.json")
+        result.save(generated_dataset_path)
+
+    if not args.generate_only:
+        dataset = Dataset(config, generated_dataset_path)
+        result = pipeline.evaluate(dataset)
+        evaluated_dataset_path = os.path.join(config["save_dir"], "evaluated.json")
+        result.save(evaluated_dataset_path)
+
+
+
 def react_agent(args):
     save_note = "react-agent"
     if args.save_note_suffix:
@@ -492,6 +525,7 @@ if __name__ == "__main__":
         "legal-naive-leave-1-out": legal_naive,
         "adaptive-leave-1-out": adaptive_leave_1_out,
         "crag-leave-1-out": crag_leave_1_out,
+        "crag-no-web-leave-1-out": crag_no_web_leave_1_out,
         "react-agent-leave-1-out": react_agent_leave_1_out,
         "selfrag-leave-1-out": selfrag_leave_1_out,
     }
