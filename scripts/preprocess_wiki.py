@@ -29,16 +29,11 @@ def load_corpus(dir_path):
         with open(file_path, "r", encoding="utf-8") as f:
             for line in f:
                 json_data = json.loads(line)
-                corpus.append(json_data)
+                yield json_data
 
     all_files = [file for file in iter_files(dir_path)]
-    corpus = []
-
-    with ThreadPoolExecutor(max_workers=args.num_workers) as executor:
-        for file_path in all_files:
-            executor.submit(read_jsonl_file, file_path)
-
-    return corpus
+    for file_path in all_files:
+        yield from read_jsonl_file(file_path)
 
 
 def basic_process(title, text):
@@ -176,56 +171,36 @@ if __name__ == "__main__":
         ]
     )
 
-    corpus = load_corpus(temp_dir)
-
-    documents = {}
-    # To avoid duplicate pages
-    for item in tqdm(corpus):
-        title = item["title"]
-        text = item["text"]
-        if title in documents:
-            documents[title] += " " + text
-        else:
-            documents[title] = text
+    documents = load_corpus(temp_dir)
 
     print("Start pre-processing...")
-    documents = list(documents.items())
 
-    with Pool(processes=args.num_workers) as p:
-        result_list = list(tqdm(p.imap(single_worker, split_list(documents, args.num_workers))))
-    result_list = sum(result_list, [])
-
-    all_title = [item[0] for item in result_list]
-    all_text = [item[1] for item in result_list]
-
-    print("Start chunking...")
-    idx = 0
-    clean_corpus = []
-
-    # Initialize a Chonkie chunker, based on the chunk_by argument
     if args.chunk_by == "token":
         chunker = chonkie.TokenChunker(tokenizer=args.tokenizer_name_or_path, chunk_size=args.chunk_size)
     elif args.chunk_by == "sentence":
-        chunker = chonkie.SentenceChunker(tokenizer=args.tokenizer_name_or_path, chunk_size=args.chunk_size)
+        chunker = chonkie.SentenceChunker(tokenizer_or_token_counter=args.tokenizer_name_or_path, chunk_size=args.chunk_size)
     elif args.chunk_by == "recursive":
-        chunker = chonkie.RecursiveChunker(tokenizer=args.tokenizer_name_or_path, chunk_size=args.chunk_size, min_characters_per_chunk=1)
+        chunker = chonkie.RecursiveChunker(tokenizer_or_token_counter=args.tokenizer_name_or_path, chunk_size=args.chunk_size, min_characters_per_chunk=1)
     elif args.chunk_by == "word":
-        chunker = chonkie.WordChunker(tokenizer=args.tokenizer_name_or_path, chunk_size=args.chunk_size)
+        chunker = chonkie.WordChunker(tokenizer_or_token_counter=args.tokenizer_name_or_path, chunk_size=args.chunk_size)
     else:
         raise ValueError(f"Invalid chunking method: {args.chunk_by}")
 
-    # Chunk the text into segments, with chunker
-    for title, text in tqdm(zip(all_title, all_text), total=len(all_text)):
-        chunks = chunker.chunk(text)
-        for chunk in chunks:
-            clean_corpus.append({"title": title, "text": chunk.text})
+
+    with open(args.save_path, "w", encoding="utf-8") as f:
+        for i, item in tqdm(enumerate(documents)):
+            title, text = basic_process(item["title"], item["text"])
+            if title is None:
+                continue
+            title = f'"{title}"'
+            chunks = chunker(text)
+            for chunk in chunks:
+                clean_corpus = {
+                    "id": i,
+                    "title": title,
+                    "contents": chunk.text
+                }
+                f.write(json.dumps(clean_corpus) + "\n")
 
     shutil.rmtree(temp_dir)
-
-    print("Start saving corpus...")
-    with open(args.save_path, "w", encoding="utf-8") as f:
-        for idx, item in enumerate(clean_corpus):
-            title = f"\"{item['title']}\""
-            item = {"id": idx, "title": title, "text": item["text"]}
-            f.write(json.dumps(item) + "\n")
     print("Finish!")

@@ -1,6 +1,9 @@
 import json
 import os
 import time
+
+from weaviate.collections import Collection
+
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 import warnings
 from typing import List, Dict, Union
@@ -116,7 +119,7 @@ class BaseRetriever:
     def __init__(self, config):
         self._config = config
         self.update_config()
-    
+
     @property
     def config(self):
         return self._config
@@ -125,11 +128,11 @@ class BaseRetriever:
     def config(self, config_data):
         self._config = config_data
         self.update_config()
-    
+
     def update_config(self):
         self.update_base_setting()
         self.update_additional_setting()
-    
+
     def update_base_setting(self):
         self.retrieval_method = self._config["retrieval_method"]
         self.topk = self._config["retrieval_topk"]
@@ -154,8 +157,10 @@ class BaseRetriever:
             assert self.cache_path is not None
             with open(self.cache_path, "r") as f:
                 self.cache = json.load(f)
+
     def update_additional_setting(self):
         pass
+
     def _save_cache(self):
         self.cache = convert_numpy(self.cache)
 
@@ -163,6 +168,7 @@ class BaseRetriever:
             if isinstance(obj, np.float32):
                 return float(obj)
             raise TypeError(f"Type {type(obj)} not serializable")
+
         with open(self.cache_save_path, "w") as f:
             json.dump(self.cache, f, indent=4, default=custom_serializer)
 
@@ -220,9 +226,10 @@ class BM25Retriever(BaseTextRetriever):
     def __init__(self, config, corpus=None):
         super().__init__(config)
         self.load_model_corpus(corpus)
+
     def update_additional_setting(self):
         self.backend = self._config["bm25_backend"]
-    
+
     def load_model_corpus(self, corpus):
         if self.backend == "pyserini":
             # Warning: the method based on pyserini will be deprecated
@@ -336,17 +343,17 @@ class DenseRetriever(BaseTextRetriever):
 
     def __init__(self, config: dict, corpus=None):
         super().__init__(config)
-        
+
         self.load_corpus(corpus)
         self.load_index()
         self.load_model()
-    
+
     def load_corpus(self, corpus):
         if corpus is None:
             self.corpus = load_corpus(self.corpus_path)
         else:
             self.corpus = corpus
-    
+
     def load_index(self):
         if self.index_path is None or not os.path.exists(self.index_path):
             raise Warning(f"Index file {self.index_path} does not exist!")
@@ -357,7 +364,6 @@ class DenseRetriever(BaseTextRetriever):
             co.shard = True
             self.index = faiss.index_cpu_to_all_gpus(self.index, co=co)
 
-    
     def update_additional_setting(self):
         self.query_max_length = self._config["retrieval_query_max_length"]
         self.pooling_method = self._config['retrieval_pooling_method']
@@ -372,20 +378,20 @@ class DenseRetriever(BaseTextRetriever):
     def load_model(self):
         if self.use_st:
             self.encoder = STEncoder(
-                model_name = self.retrieval_method,
-                model_path = self._config["retrieval_model_path"],
-                max_length = self.query_max_length,
-                use_fp16 = self.use_fp16,
-                instruction = self.instruction,
+                model_name=self.retrieval_method,
+                model_path=self._config["retrieval_model_path"],
+                max_length=self.query_max_length,
+                use_fp16=self.use_fp16,
+                instruction=self.instruction,
             )
         else:
             self.encoder = Encoder(
-                model_name = self.retrieval_method,
-                model_path = self.retreival_model_path,
-                pooling_method = self.pooling_method,
-                max_length = self.query_max_length,
-                use_fp16 = self.use_fp16,
-                instruction = self.instruction,
+                model_name=self.retrieval_method,
+                model_path=self.retreival_model_path,
+                pooling_method=self.pooling_method,
+                max_length=self.query_max_length,
+                use_fp16=self.use_fp16,
+                instruction=self.instruction,
             )
 
     def _search(self, query: str, num: int = None, return_score=False):
@@ -422,12 +428,208 @@ class DenseRetriever(BaseTextRetriever):
 
         flat_idxs = sum(idxs, [])
         results = load_docs(self.corpus, flat_idxs)
-        results = [results[i * num : (i + 1) * num] for i in range(len(idxs))]
+        results = [results[i * num: (i + 1) * num] for i in range(len(idxs))]
 
         if return_score:
             return results, scores
         else:
             return results
+
+
+class WeaviateRetriever(BaseTextRetriever):
+    r"""Retriever that uses a local Weaviate vector DB instance."""
+
+    def __init__(self, config: dict, corpus=None):
+        print('Creating Weaviate retriever...')
+        super().__init__(config)
+        # self.load_corpus(corpus)
+        self.load_model()
+        self.client = None
+        self.connect_to_weaviate()
+
+    def __del__(self):
+        if self.client:
+            self.client.close()
+
+    def update_additional_setting(self):
+        self.query_max_length = self._config["retrieval_query_max_length"]
+        self.pooling_method = self._config['retrieval_pooling_method']
+        self.use_fp16 = self._config['retrieval_use_fp16']
+        self.batch_size = self._config["retrieval_batch_size"]
+        self.instruction = self._config["instruction"]
+        self.retrieval_model_path = self._config['retrieval_model_path']
+        self.use_st = self._config["use_sentence_transformer"]
+        self.weaviate_host = self._config.final_config.get("weaviate_url", "localhost")
+        self.weaviate_port = self._config.final_config.get("weaviate_port", 8080)
+        self.weaviate_collection_name = self._config["weaviate_collection_name"]
+        self.weaviate_language = self._config["weaviate_language"]
+        self.alpha = self._config["weaviate_alpha"]
+        self.weaviate_query_properties = self._config.final_config.get("weaviate_query_properties", None)
+
+    def load_model(self):
+        import stanza
+        stanza.download(self.weaviate_language)
+        self.lemma_model = stanza.Pipeline(lang=self.weaviate_language, processors='tokenize,lemma,pos')
+
+        if self.use_st:
+            self.encoder = STEncoder(
+                model_name=self.retrieval_method,
+                model_path=self.retrieval_model_path,
+                max_length=self.query_max_length,
+                use_fp16=self.use_fp16,
+                instruction=self.instruction,
+            )
+        else:
+            self.encoder = Encoder(
+                model_name=self.retrieval_method,
+                model_path=self.retrieval_model_path,
+                pooling_method=self.pooling_method,
+                max_length=self.query_max_length,
+                use_fp16=self.use_fp16,
+                instruction=self.instruction,
+            )
+
+    def lemmatize(self, text: str) -> str:
+        doc = self.lemma_model(text)
+        lemmatized_tokens = [word.lemma for sentence in doc.sentences for word in sentence.words]
+        return " ".join(lemmatized_tokens)
+
+    def connect_to_weaviate(self):
+        import weaviate
+        self.client = weaviate.connect_to_local(host=self.weaviate_host, port=self.weaviate_port)
+        self.weaviate_collection = self.client.collections.get(self.weaviate_collection_name).with_tenant("default")
+        self.weaviate_dumpster = self.client.collections.get(self.weaviate_collection_name).with_tenant("tmp")
+        self.weaviate_metadata_config = weaviate.classes.query.MetadataQuery(certainty=True, score=True)
+
+    def _move_records(self, src_collection: Collection, trg_collection: Collection, file: str, delete_from_src: bool = True):
+        from weaviate.classes.query import Filter
+
+        with trg_collection.batch.fixed_size(batch_size=100) as batch:
+            for q in tqdm(src_collection.query.fetch_objects(
+                    filters=Filter.by_property("file").contains_any([file]),
+                    include_vector=True,
+                    limit=10000
+            ).objects):
+                batch.add_object(
+                    properties=q.properties,
+                    vector=q.vector["default"],
+                    uuid=q.uuid
+                )
+
+        if delete_from_src:
+            src_collection.data.delete_many(
+                where=Filter.by_property("file").contains_any([file])
+            )
+
+    def search_leave_1_out(self, query: str, file: str, num: int = None, return_score=False):
+        if num is None:
+            num = self.topk
+        query_emb = self.encoder.encode(query)[0]
+
+        lemmatized_query = self.lemmatize(query)
+
+        # move the records to dumpster
+        self._move_records(self.weaviate_collection, self.weaviate_dumpster, file, delete_from_src=True)
+
+        import weaviate
+        response = self.weaviate_collection.query.hybrid(
+            query=lemmatized_query,
+            vector=query_emb,
+            limit=num,
+            return_metadata=self.weaviate_metadata_config,
+            # query_properties=["name_lemmas", "contents_lemmas", "verdict", "referenced_paragraphs", "referenced_entities"],
+            query_properties=self.weaviate_query_properties,
+            alpha=self.alpha,
+            fusion_type=weaviate.classes.query.HybridFusion.RELATIVE_SCORE,
+        )
+
+        results = []
+        scores = []
+
+        for o in response.objects:
+            doc = {
+                'id': o.properties['orig_id'],
+                'title': o.properties['name'],
+                'text': o.properties['contents'],
+                **o.properties
+            }
+            results.append(doc)
+            scores.append(float(o.metadata.score))
+
+        # move back the records
+        self._move_records(self.weaviate_dumpster, self.weaviate_collection, file, delete_from_src=True)
+
+        if return_score:
+            return results, scores
+        return results
+
+    def hide_data(self, file: str):
+        self._move_records(self.weaviate_collection, self.weaviate_dumpster, file, delete_from_src=True)
+
+    def unhide_data(self, file: str):
+        self._move_records(self.weaviate_dumpster, self.weaviate_collection, file, delete_from_src=True)
+
+    def _search(self, query: str, num: int = None, return_score=False):
+        if not query:
+            print("Query is empty!")
+            if return_score:
+                return [], []
+            return []
+        if num is None:
+            num = self.topk
+
+        query_emb = self.encoder.encode(query)[0]
+        lemmatized_query = self.lemmatize(query)
+
+        response = self.weaviate_collection.query.hybrid(
+            query=lemmatized_query,
+            vector=query_emb,
+            limit=num,
+            return_metadata=self.weaviate_metadata_config,
+            # query_properties=["name_lemmas^2", "contents_lemmas"],
+            # query_properties=["name_lemmas^0", "contents_lemmas"],
+            alpha=self.alpha,
+        )
+
+        results = []
+        scores = []
+
+        for o in response.objects:
+            doc = {
+                'id': o.properties['orig_id'],
+                'title': o.properties['name'],
+                'text': o.properties['contents'],
+                **o.properties
+            }
+            results.append(doc)
+            scores.append(float(o.metadata.score))
+        if return_score:
+            return results, scores
+        return results
+
+    def _batch_search(self, query: List[str], num: int = None, return_score: bool = False):
+        """
+        Perform multiple queries (batch search) and return a list of result lists.
+        """
+        if num is None:
+            num = self.topk
+
+        if return_score:
+            results = []
+            scores = []
+            for q in query:
+                res, score = self._search(q, num, return_score)
+                results.append(res)
+                scores.append(score)
+            return results, scores
+
+        # else
+        all_results = []
+        for q in query:
+            res = self._search(q, num, return_score)
+            all_results.append(res)
+
+        return all_results
 
 
 class MultiModalRetriever(BaseRetriever):
@@ -519,7 +721,7 @@ class MultiModalRetriever(BaseRetriever):
         scores = []
 
         for start_idx in tqdm(range(0, len(query), batch_size), desc="Retrieval process: "):
-            query_batch = query[start_idx : start_idx + batch_size]
+            query_batch = query[start_idx: start_idx + batch_size]
             batch_emb = self.encoder.encode(query_batch, modal=query_modal)
             batch_scores, batch_idxs = self.index_dict[target_modal].search(batch_emb, k=num)
 
@@ -528,7 +730,7 @@ class MultiModalRetriever(BaseRetriever):
 
             flat_idxs = sum(batch_idxs, [])
             batch_results = load_docs(self.corpus, flat_idxs)
-            batch_results = [batch_results[i * num : (i + 1) * num] for i in range(len(batch_idxs))]
+            batch_results = [batch_results[i * num: (i + 1) * num] for i in range(len(batch_idxs))]
 
             scores.extend(batch_scores)
             results.extend(batch_results)
@@ -585,7 +787,7 @@ class MultiRetrieverRouter:
                 try:
                     model_config = AutoConfig.from_pretrained(retrieval_model_path)
                     arch = model_config.architectures[0]
-                    print("arch: ",arch)
+                    print("arch: ", arch)
                     if "clip" in arch.lower():
                         retriever = MultiModalRetriever(retriever_config, corpus)
                     else:
@@ -625,7 +827,7 @@ class MultiRetrieverRouter:
         def process_retriever(retriever):
             is_multimodal = isinstance(retriever, MultiModalRetriever)
             params = {"query": query, "return_score": return_score}
-            
+
             if is_multimodal:
                 params["target_modal"] = target_modal
 
@@ -644,7 +846,8 @@ class MultiRetrieverRouter:
             return result, score
 
         with ThreadPoolExecutor(max_workers=4) as executor:
-            future_to_retriever = {executor.submit(process_retriever, retriever): retriever for retriever in retriever_list}
+            future_to_retriever = {executor.submit(process_retriever, retriever): retriever for retriever in
+                                   retriever_list}
             for future in as_completed(future_to_retriever):
                 try:
                     result, score = future.result()
@@ -660,7 +863,6 @@ class MultiRetrieverRouter:
         else:
             return result_list
 
-
     def reorder(self, result_list, score_list, retriever_list):
         """
         batch_search:
@@ -669,7 +871,7 @@ class MultiRetrieverRouter:
 
         navie search:
         original result like: [bm25-d1, bm25-d2, e5-d1, e5-d2]
-        
+
         """
 
         retriever_num = len(retriever_list)
@@ -713,7 +915,7 @@ class MultiRetrieverRouter:
             return result_list, score_list
         elif self.merge_method == "rrf":
             if (isinstance(result_list[0], dict) and len(set([doc["corpus_path"] for doc in result_list])) > 1) or (
-                isinstance(result_list[0], list) and len(set([doc["corpus_path"] for doc in result_list[0]])) > 1
+                    isinstance(result_list[0], list) and len(set([doc["corpus_path"] for doc in result_list[0]])) > 1
             ):
                 warnings.warn(
                     "Using multiple corpus may lead to conflicts in DOC IDs, which may result in incorrect rrf results!"
@@ -792,21 +994,24 @@ class MultiRetrieverRouter:
         # query: str or PIL.Image
         # judge query type: text or image
         if judge_image(query):
-            retriever_list = [retriever for retriever in self.retriever_list if isinstance(retriever, MultiModalRetriever)]
+            retriever_list = [retriever for retriever in self.retriever_list if
+                              isinstance(retriever, MultiModalRetriever)]
         else:
             retriever_list = self.retriever_list
         if target_modal == 'image':
             # remove text retriever
             retriever_list = [retriever for retriever in retriever_list if isinstance(retriever, MultiModalRetriever)]
 
-        return self._search_or_batch_search(query, target_modal, num, return_score, method="search", retriever_list=retriever_list)
+        return self._search_or_batch_search(query, target_modal, num, return_score, method="search",
+                                            retriever_list=retriever_list)
 
     def batch_search(self, query, target_modal="text", num: Union[list, int, None] = None, return_score=False):
         # judge query type: text or image
         if not isinstance(query, list):
             query = [query]
         if target_modal == 'image':
-            self._retriever_list = [retriever for retriever in self.retriever_list if isinstance(retriever, MultiModalRetriever)]
+            self._retriever_list = [retriever for retriever in self.retriever_list if
+                                    isinstance(retriever, MultiModalRetriever)]
         else:
             self._retriever_list = self.retriever_list
         query_type_list = [judge_image(q) for q in query]
@@ -815,15 +1020,19 @@ class MultiRetrieverRouter:
             if self.merge_method == 'rerank':
                 warnings.warn('merge_method is rerank, but all query is image, use default method `concat` instead')
                 self.merge_method = 'concat'
-            retriever_list = [retriever for retriever in self._retriever_list if isinstance(retriever, MultiModalRetriever)]
+            retriever_list = [retriever for retriever in self._retriever_list if
+                              isinstance(retriever, MultiModalRetriever)]
 
-            return self._search_or_batch_search(query, target_modal, num, return_score, method="batch_search", retriever_list=retriever_list)
+            return self._search_or_batch_search(query, target_modal, num, return_score, method="batch_search",
+                                                retriever_list=retriever_list)
         elif all([not t for t in query_type_list]):
             # all query is text
             # if exist text retriever, don't use mm retriever for text-text search
             if any([isinstance(retriever, BaseTextRetriever) for retriever in self._retriever_list]):
-                self._retriever_list = [retriever for retriever in self._retriever_list if not isinstance(retriever, MultiModalRetriever)]
-            return self._search_or_batch_search(query, target_modal, num, return_score, method="batch_search", retriever_list=self._retriever_list)
+                self._retriever_list = [retriever for retriever in self._retriever_list if
+                                        not isinstance(retriever, MultiModalRetriever)]
+            return self._search_or_batch_search(query, target_modal, num, return_score, method="batch_search",
+                                                retriever_list=self._retriever_list)
         else:
             # query list is the mix of image and text
             if self.merge_method == 'rerank':
@@ -833,9 +1042,12 @@ class MultiRetrieverRouter:
             image_query_list = [query[i] for i in image_query_idx]
             text_query_list = [q for q in query if q not in image_query_list]
 
-            text_output = self._search_or_batch_search(text_query_list, target_modal, num, return_score, method="batch_search", retriever_list=self._retriever_list)
-            retriever_list = [retriever for retriever in self._retriever_list if isinstance(retriever, MultiModalRetriever)]
-            image_output = self._search_or_batch_search(text_query_list, target_modal, num, return_score, method="batch_search", retriever_list=retriever_list)
+            text_output = self._search_or_batch_search(text_query_list, target_modal, num, return_score,
+                                                       method="batch_search", retriever_list=self._retriever_list)
+            retriever_list = [retriever for retriever in self._retriever_list if
+                              isinstance(retriever, MultiModalRetriever)]
+            image_output = self._search_or_batch_search(text_query_list, target_modal, num, return_score,
+                                                        method="batch_search", retriever_list=retriever_list)
 
             # merge text output and image output
             if return_score:
@@ -853,7 +1065,7 @@ class MultiRetrieverRouter:
                     else:
                         final_result.append(image_result[image_idx])
                         final_score.append(image_score[image_idx])
-                        image_idx += 1 
+                        image_idx += 1
                 return final_result, final_score
             else:
                 final_result = []
@@ -865,6 +1077,121 @@ class MultiRetrieverRouter:
                         text_idx += 1
                     else:
                         final_result.append(image_result[image_idx])
-                        image_idx += 1 
+                        image_idx += 1
                 return final_result
 
+
+class GoogleSearchRetriever(BaseTextRetriever):
+    """
+    A retriever that uses Google's Custom Search JSON API to perform searches on the web.
+    """
+
+    def __init__(self, config):
+        super().__init__(config)
+
+    def update_additional_setting(self):
+        """
+        If you have any additional settings unique to GoogleSearchRetriever,
+        load or initialize them here.
+        """
+        # Retrieve the Google API key and Custom Search Engine (CSE) ID from config.
+        self.google_api_key = self._config["google_search_api_key"]
+        self.google_cse_id = self._config["google_search_cse_id"]
+
+    def _search(self, query: str, num: int = None, return_score: bool = False):
+        if num is None:
+            num = self.topk
+
+        from googleapiclient.discovery import build
+        service = build("customsearch", "v1", developerKey=self.google_api_key)
+        response = service.cse().list(
+            q=query,
+            cx=self.google_cse_id,
+            num=num
+        ).execute()
+
+        items = response.get("items", [])
+        results = []
+        scores = []
+        for item in items:
+            doc = {
+                "title": item.get("title", ""),
+                "snippet": item.get("snippet", ""),
+                "link": item.get("link", "")
+            }
+            results.append(str(doc))
+            # Hardcoding 1 as relevance, since Google Search doesn't provide scores.
+            scores.append(1.0)
+
+        if return_score:
+            return results, scores
+        return results
+
+    def _batch_search(self, queries, num: int = None, return_score: bool = False):
+        """
+        Perform multiple queries (batch search) and return a list of result lists.
+        """
+        if num is None:
+            num = self.topk
+
+        all_results = []
+        for q in queries:
+            res = self._search(q, num, return_score)
+            all_results.append(res)
+
+        return all_results
+
+
+class TavilySearchRetriever(BaseTextRetriever):
+    """
+    A retriever that uses Google's Custom Search JSON API to perform searches on the web.
+    """
+
+    def __init__(self, config):
+        super().__init__(config)
+        from tavily import TavilyClient
+        self.client = TavilyClient(api_key=self.tavily_search_api_key)
+
+    def update_additional_setting(self):
+        """
+        If you have any additional settings unique to GoogleSearchRetriever,
+        load or initialize them here.
+        """
+        # Retrieve the Google API key and Custom Search Engine (CSE) ID from config.
+        self.tavily_search_api_key = self._config["tavily_search_api_key"]
+
+    def _search(self, query: str, num: int = None, return_score: bool = False):
+        if num is None:
+            num = self.topk
+
+        response = self.client.search(query, max_results=num)
+
+        items = response.get("results", [])
+        results = []
+        scores = []
+        for item in items:
+            doc = {
+                "url": item.get("url", ""),
+                "title": item.get("title", ""),
+                "content": item.get("content", "")
+            }
+            results.append(str(doc))
+            scores.append(item.get("score", 1.0))
+
+        if return_score:
+            return results, scores
+        return results
+
+    def _batch_search(self, queries, num: int = None, return_score: bool = False):
+        """
+        Perform multiple queries (batch search) and return a list of result lists.
+        """
+        if num is None:
+            num = self.topk
+
+        all_results = []
+        for q in queries:
+            res = self._search(q, num, return_score)
+            all_results.append(res)
+
+        return all_results

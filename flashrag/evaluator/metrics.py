@@ -1,8 +1,13 @@
+import json
 import re
+from copy import deepcopy
+
 import numpy as np
 import warnings
 from collections import Counter
 from flashrag.evaluator.utils import normalize_answer
+from flashrag.prompt import PromptTemplate
+from flashrag.utils import get_generator
 
 
 class BaseMetric:
@@ -283,7 +288,7 @@ class Retrieval_Precision(BaseMetric):
 class Rouge_Score(BaseMetric):
     metric_name = "rouge_score"
     cached_scores = {}
-    
+
     def __init__(self, config):
         super().__init__(config)
         from rouge import Rouge
@@ -305,8 +310,6 @@ class Rouge_Score(BaseMetric):
 
         self.cached_scores[(pred, tuple(golden_answers))] = output
         return output
-
-
 
 
 class Rouge_1(Rouge_Score):
@@ -366,11 +369,10 @@ class Rouge_L(Rouge_Score):
         return {"rouge-l": score}, metric_score_list
 
 
-
 class ZH_Rouge_Score(BaseMetric):
     metric_name = "zh_rouge_score"
     cached_scores = {}
-    
+
     def __init__(self, config):
         super().__init__(config)
         from rouge_chinese import Rouge
@@ -397,14 +399,11 @@ class ZH_Rouge_Score(BaseMetric):
         return output
 
 
-
-
 class ZH_Rouge_1(ZH_Rouge_Score):
     metric_name = "zh_rouge-1"
 
     def __init__(self, config):
         super().__init__(config)
-        
 
     def calculate_metric(self, data):
         golden_answers_list = self.get_dataset_answer(data)
@@ -457,8 +456,6 @@ class ZH_Rouge_L(ZH_Rouge_Score):
         return {"zh_rouge-l": score}, metric_score_list
 
 
-
-
 class BLEU(BaseMetric):
     metric_name = "bleu"
 
@@ -506,6 +503,7 @@ class BLEU(BaseMetric):
 
 class LLMJudge(BaseMetric):
     metric_name = "llm_judge"
+    # TODO wait, this does not check golden answers againts generated ones!!!
     JUDGE_PROMPT = """
     You will be given a user_question and system_answer couple.
     Your task is to provide a 'total rating' scoring how well the system_answer answers the user concerns expressed in the user_question.
@@ -543,6 +541,7 @@ class LLMJudge(BaseMetric):
 
         self.llm_pipeline = pipeline("text2text-generation", model=model_path, device=0)
 
+    # TODO check this, answer is `self`???
     def extract_judge_score(answer: str, split_str: str = "Total rating:") -> int:
         try:
             if split_str in answer:
@@ -562,6 +561,7 @@ class LLMJudge(BaseMetric):
         judge_input_prompt = [self.JUDGE_PROMPT.format(question=q, answer=a) for q, a in zip(question_list, pred_list)]
         judge_output = self.llm_pipeline(judge_input_prompt, max_new_tokens=100, batch_size=8)
         judge_output = [item["generated_text"] for item in judge_output]
+        # TODO store judge_output to dataset
 
         metric_score_list = [self.extract_judge_score(o) for o in judge_output]
         # rescale score
@@ -570,6 +570,116 @@ class LLMJudge(BaseMetric):
         score = sum(metric_score_list) / len(metric_score_list)
 
         return {"llm_judge_score": score}, metric_score_list
+
+
+class LLMJudgeMatcher(BaseMetric):
+    metric_name = "llm_judge_matcher"
+
+    SYSTEM_PROMPT = """
+        Assume you are a human expert in grading predictions given by a model. You are given a question and a model prediction. Judge if the ground truth answer is present in the generated response by the following instructions:  
+        1. Carefully compare the "Predicted Answer" with the "Ground Truth Answer".
+        2. Consider the substance of the answers – look for equivalent information or correct answers. Do
+        not focus on exact wording unless the exact wording is crucial to the meaning.
+        3. Your final decision should be based on whether the meaning and the vital facts of the "Ground
+        truth" are present in the "Prediction" answer. For positive decision the score is 1, otherwise score is 0. 
+          
+        Output a valid JSON blob with a short "explanation" field explaining your answer as short as possible and a "score" field with value 1 or 0.  
+        Do not forget about double quotes for keys and values in the JSON blob.  
+        Do not wrap the JSON blob in any other text or ``` code block.
+    """
+
+    USER_PROMPT = "Question: '{question}'\n Ground truth: '{ground_truth}'\n Prediction: '{answer}'\n"
+
+    def __init__(self, config):
+        super().__init__(config)
+        assert "llm_judge_generator_override" in config["metric_setting"], "No available LLM settings for LLM Judge!"
+        self.overridden_config = deepcopy(config)
+        if llm_setting := config["metric_setting"].get("llm_judge_generator_override", {}):
+            self.overridden_config.final_config.update(llm_setting)
+        self.generator = get_generator(self.overridden_config)
+        self.prompt_template = PromptTemplate(self.overridden_config, system_prompt=self.SYSTEM_PROMPT, user_prompt=self.USER_PROMPT)
+
+    def extract_judge_score(self, answer: str) -> int | None:
+        try:
+            answer_json = json.loads(answer)
+            return int(answer_json["score"])
+        except Exception as e:
+            print(e)
+            return None
+
+    def extract_golden_answer(self, choices, golden_answers) -> str | None:
+        # TODO move logic to dataset?
+        try:
+            if isinstance(golden_answers, list):
+                # print(f"Multiple ground truths, taking first one, {golden_answers}")
+                if isinstance(golden_answers[0], str):
+                    # TODO handle multiple ground truths?
+                    return golden_answers[0]
+                elif isinstance(golden_answers[0], int):
+                    if len(choices) == 0:
+                        print("No choices available, but golden answer is index?")
+                    else:
+                        return choices[golden_answers[0]]
+            elif isinstance(golden_answers, str):
+                print(f"golden answer is string, {golden_answers}")
+                return golden_answers
+            elif isinstance(golden_answers, int):
+                print(f"golden answer is int, {golden_answers}")
+                if len(choices) == 0:
+                    print("No choices available, but golden answer is index?")
+                else:
+                    return choices[golden_answers]
+            else:
+                print(f"golden answer is unknown type, {golden_answers}")
+        except Exception as e:
+            print(e)
+            return None
+        return None
+
+    def calculate_metric(self, data):
+        pred_list = data.pred
+        question_list = data.question
+        ground_truths_choice = [self.extract_golden_answer(c, ga) for c, ga in zip(data.choices, data.golden_answers)]
+
+        ground_truths_extract_success = [0 if g is None else 1 for g in ground_truths_choice]
+        data.update_output("ground_truths_extract_success", ground_truths_extract_success)
+
+        assert len(question_list) == len(ground_truths_choice) == len(pred_list), "Length of inputs do not match"
+
+        judge_input_prompts = [self.prompt_template.get_string(question=q, ground_truth=g, answer=a) for q, g, a in zip(question_list, ground_truths_choice, pred_list)]
+        data.update_output("judge_input_prompt", judge_input_prompts)
+
+        judge_output_list = self.generator.generate(judge_input_prompts)
+        data.update_output("judge_output_raw", judge_output_list)
+
+        metric_score_list = [self.extract_judge_score(i.judge_output_raw) for i in data]
+
+        success_rate = [0 if score is None else 1 for score in metric_score_list]
+        data.update_output("judge_output_success_rate", success_rate)
+
+        # convert null values to 0
+        metric_score_list_normalised = [0 if score is None else score for score in metric_score_list]
+        data.update_output("judge_output_score", metric_score_list_normalised)
+
+        # only count results, which valid extraction. Different size, cannot be saved
+        adjusted_metric_score_list = [score for score in metric_score_list if score is not None]
+
+        categories_scores_list = {}
+        if "questions_type" in data[0].metadata:
+            for item in data:
+                if item.metadata["questions_type"] not in categories_scores_list:
+                    categories_scores_list[item.metadata["questions_type"]] = []
+                categories_scores_list[item.metadata["questions_type"]].append(item.judge_output_score)
+
+        categories_scores = {f"llm_judge_matcher_accuracy_category_{key}": sum(v) / len(v) for key, v in categories_scores_list.items()}
+
+        return {
+            "llm_judge_matcher_accuracy": sum(metric_score_list_normalised) / len(metric_score_list_normalised),
+            "llm_judge_matcher_adjusted_accuracy": sum(adjusted_metric_score_list) / len(adjusted_metric_score_list),
+            "llm_judge_matcher_success_rate": sum(success_rate) / len(success_rate),
+            "ground_truths_extract_success_rate": sum(ground_truths_extract_success) / len(ground_truths_extract_success),
+            **categories_scores
+        }, metric_score_list
 
 
 class CountToken(BaseMetric):
@@ -611,7 +721,7 @@ class GAOKAOMM_Accuracy(BaseMetric):
     metric_name = 'gaokao_acc'
     def __init__(self, config):
         super().__init__(config)
-    
+
     def calculate_metric(self, data):
         metric_dict = {}
         acc_list = []
@@ -638,7 +748,35 @@ class GAOKAOMM_Accuracy(BaseMetric):
             metric_dict[subject].append(acc)
         for key, value in metric_dict.items():
             metric_dict[key] = np.mean(value)
-        
+
         metric_dict['avg_score'] = np.mean(acc_list)
-        return metric_dict, acc_list 
-                
+        return metric_dict, acc_list
+
+class AvgRetrievalCalls(BaseMetric):
+    metric_name = "avg_retrieval_calls"
+
+    def __init__(self, config):
+        super().__init__(config)
+
+    def calculate_metric(self, data):
+        avg_retrieval_calls = None
+        try:
+            retrieval_calls = data.retrieval_count
+            avg_retrieval_calls = sum(retrieval_calls) / len(retrieval_calls)
+        except Exception as e:
+            print(f"{self.metric_name}: {e}")
+
+        avg_retrieved_docs_count = None
+        try:
+            retrieved_docs = data.retrieval_result
+            retrieved_docs_count = [len(d) for d  in retrieved_docs]
+            avg_retrieved_docs_count = sum(retrieved_docs_count) / len(retrieved_docs_count)
+        except Exception as e:
+            print(f"{self.metric_name}: {e}")
+
+        return {
+                "avg_retrieval_calls": avg_retrieval_calls,
+                "avg_retrieved_docs": avg_retrieved_docs_count,
+            }, []
+
+# TODO hallucination

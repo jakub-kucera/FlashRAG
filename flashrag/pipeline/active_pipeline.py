@@ -4,6 +4,8 @@ from typing import List, Tuple
 import math
 import numpy as np
 from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizerFast
+
+from flashrag.dataset import Dataset
 from flashrag.utils import get_retriever, get_generator, selfask_pred_parse, ircot_pred_parse
 from flashrag.pipeline import BasicPipeline
 from flashrag.dataset.utils import get_batch_dataset, merge_batch_dataset
@@ -615,6 +617,12 @@ class SelfRAGPipeline(BasicPipeline):
         return dataset
 
     def run(self, dataset, do_eval=True, pred_process_fun=None, long_form=False):
+        # overriding super class run method to support long_form
+        dataset = self.answer(dataset, long_form=long_form)
+        dataset = self.evaluate(dataset, do_eval=do_eval, pred_process_fun=pred_process_fun)
+        return dataset
+
+    def answer(self, dataset, long_form=False):
         run_func = self.run_batch_pred_long_form if long_form else self.run_batch_pred
         
         # # to avoid oom, split the total dataset into small batches
@@ -625,8 +633,18 @@ class SelfRAGPipeline(BasicPipeline):
         # dataset = merge_batch_dataset(all_dataset_list)
 
         dataset = run_func(dataset)
-        dataset = self.evaluate(dataset, do_eval=do_eval, pred_process_fun=pred_process_fun)
         return dataset
+
+    def answer_leave_one_out(self, dataset, long_form=False):
+        run_func = self.run_batch_pred_long_form if long_form else self.run_batch_pred
+        output_data = []
+        for data in dataset.data:
+            dataset_single = Dataset(config=dataset.config, data=[data])
+            output_single_dataset = run_func(dataset_single)
+            output_data.append(output_single_dataset.data[0])
+        output_dataset = Dataset(config=dataset.config, data=output_data)
+        return output_dataset
+
 
     def run_batch_pred(self, dataset):
         questions = dataset.question
@@ -925,7 +943,7 @@ class SelfAskPipeline(BasicPipeline):
 class IRCOTPipeline(BasicPipeline):
     IRCOT_INSTRUCTION = 'You serve as an intelligent assistant, adept at facilitating users through complex, multi-hop reasoning across multiple documents. This task is illustrated through demonstrations, each consisting of a document set paired with a relevant question and its multi-hop reasoning thoughts. Your task is to generate one thought for current step, DON\'T generate the whole thoughts at once! If you reach what you believe to be the final step, start with "So the answer is:".'
     IRCOT_EXAMPLE = "Wikipedia Title: Kurram Garhi\nKurram Garhi is a small village located near the city of Bannu, which is the part of Khyber Pakhtunkhwa province of Pakistan. Its population is approximately 35000. Barren hills are near this village. This village is on the border of Kurram Agency. Other nearby villages are Peppal, Surwangi and Amandi Kala.\n\nWikipedia Title: 2001–02 UEFA Champions League second group stage\nEight winners and eight runners- up from the first group stage were drawn into four groups of four teams, each containing two group winners and two runners- up. Teams from the same country or from the same first round group could not be drawn together. The top two teams in each group advanced to the quarter- finals.\n\nWikipedia Title: Satellite tournament\nA satellite tournament is either a minor tournament or event on a competitive sporting tour or one of a group of such tournaments that form a series played in the same country or region.\n\nWikipedia Title: Trojkrsti\nTrojkrsti is a village in Municipality of Prilep, Republic of Macedonia.\n\nWikipedia Title: Telephone numbers in Ascension Island\nCountry Code:+ 247< br> International Call Prefix: 00 Ascension Island does not share the same country code( +290) with the rest of St Helena.\n\nQuestion: Are both Kurram Garhi and Trojkrsti located in the same country?\nThought: Kurram Garhi is located in the country of Pakistan. Trojkrsti is located in the country of Republic of Macedonia. Thus, they are not in the same country. So the answer is: no.\n\n"
-
+    # TODO output num of generations
     def __init__(
         self, config, prompt_template=None, max_iter=2, retriever=None, generator=None
     ):
@@ -950,8 +968,10 @@ class IRCOTPipeline(BasicPipeline):
         batch_thoughts = {item_id: [] for item_id in range(len(items))}
         iter_num = 0
         batch_retrieval_results = []
+        # all_retrieval_results = []
         doc2score_batch = []
         id2doc_batch = []
+        retrieval_counts = []
 
         # Initial retrieval for all items in the batch
         questions = [item.question for item in items]
@@ -961,8 +981,10 @@ class IRCOTPipeline(BasicPipeline):
             doc2score = {doc_item['id']: score for doc_item, score in zip(retrieval_result, scores)}
             id2doc = {doc_item['id']: doc_item for doc_item in retrieval_result}
             batch_retrieval_results.append(retrieval_result)
+            # all_retrieval_results.append(retrieval_result)
             doc2score_batch.append(doc2score)
             id2doc_batch.append(id2doc)
+            retrieval_counts.append(1)
 
         # Start the iterative process
         active_item_ids = list(range(len(items)))  # Track items that need more iterations
@@ -985,6 +1007,7 @@ class IRCOTPipeline(BasicPipeline):
             for idx, item_id in enumerate(active_item_ids):
                 new_thought = new_thoughts_batch[idx]
                 batch_thoughts[item_id].append(new_thought)
+                retrieval_counts[item_id] += 1
                 
                 # Check for termination condition
                 # Store intermediate outputs
@@ -1023,18 +1046,24 @@ class IRCOTPipeline(BasicPipeline):
                     sorted_doc_score = sorted(doc2score_batch[item_id].items(), key=lambda x: x[1], reverse=False)
                     sorted_doc_id = [t[0] for t in sorted_doc_score]
                     batch_retrieval_results[item_id] = [id2doc_batch[item_id][id] for id in sorted_doc_id]
+                    # all_retrieval_results[item_id].extend(batch_retrieval_results[item_id])
 
             iter_num += 1
 
         # Final update for each item in the batch
         for item_id, item in enumerate(items):
+            # store into metadata instead?
+            item.update_output('retrieval_count', retrieval_counts[item_id])
+            # TODO here the `retrieval result will only contain resutls from the last round and not all of them`
             item.update_output('retrieval_result', batch_retrieval_results[item_id])
             item.update_output('pred', ' '.join(batch_thoughts[item_id]))
 
-    def run(self, dataset, do_eval=True, pred_process_fun=ircot_pred_parse):
-
+    def answer(self, dataset):
         self.run_batch(dataset)
+        return dataset
 
+    def run(self, dataset, do_eval=True, pred_process_fun=ircot_pred_parse):
+        dataset = self.answer(dataset)
         dataset = self.evaluate(dataset, do_eval=do_eval, pred_process_fun=pred_process_fun)
         return dataset
 

@@ -9,6 +9,13 @@ model2path:
   llama2-13B: "meta-llama/Llama-2-13b-hf"
   llama2-13B-chat: "meta-llama/Llama-2-13b-chat-hf"
   llama3-8B-instruct: "meta-llama/Meta-Llama-3-8B-Instruct"
+  llama31-8B-instruct: "meta-llama/Llama-3.1-8B-Instruct"
+  ministral-8B-instruct: "mistralai/Ministral-8B-Instruct-2410"
+
+model2ollama:
+  llama2-7B-chat: "llama2:7b-chat"
+  llama31-8B-instruct: "llama3.1:8b-instruct-fp16"
+  ministral-8B-instruct: "nchapman/ministral-8b-instruct-2410"
 
 # Pooling methods for each embedding model
 model2pooling:
@@ -60,6 +67,7 @@ save_retrieval_cache: False # whether to save the retrieval cache
 use_retrieval_cache: False # whether to use the retrieval cache
 retrieval_cache_path: ~ # path to the retrieval cache
 retrieval_pooling_method: ~ # set automatically if not provided
+retrieval_dense_use_weaviate: False # whether to use weaviate for dense retrieval
 
 use_reranker: False # whether to use reranker
 rerank_model_name: ~ # same as retrieval_method
@@ -115,4 +123,14 @@ metric_setting:
 save_metric_score: True #　whether to save the metric score into txt file
 
 
+# -----------------------------------------Google search retriever Settings-----------------------------------------#
+google_search_api_key: ~
+google_search_cse_id: ~
 
+
+# ---------------------------------------------------Weaviate Settings------------------------------------------------#
+weaviate_collection_name: "NSS_corpus_full"
+weaviate_language: "cs"
+weaviate_alpha: 0.5
+weaviate_query_properties: ['contents_lemmas', 'referenced_paragraphs', 'referenced_entities']
+retrieved_document_prompt_properties: ['contents', 'referenced_paragraphs']
