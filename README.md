@@ -1,3 +1,14 @@
+> [!NOTE]
+> **About this fork:** I extended FlashRAG for my master's thesis on RAG over Czech court decisions. For an overview and results, see [czech-legal-rag](https://github.com/jakub-kucera/czech-legal-rag); all my changes are in [this comparison](https://github.com/jakub-kucera/FlashRAG/compare/4a6b904...main). The main additions:
+>
+> - A Weaviate retriever with hybrid (vector + keyword) search over lemmatised text, and the option to hide a question's source document during retrieval (`flashrag/retriever/`)
+> - An LLM-as-a-judge metric, `llm_judge_matcher` (`flashrag/evaluator/metrics.py`)
+> - Separate generation and evaluation runs (`examples/methods/run_exp_split.py`, `run_eval_only.py`)
+> - A ReAct agent pipeline, and Corrective RAG with real web search (Tavily) or with web search turned off
+> - Support for Ollama and quantised vLLM models
+
+---
+
 # <div align="center">⚡FlashRAG: A Python Toolkit for Efficient RAG Research<div>
 \[ English | [中文](README_zh.md) \]
 <div align="center">
